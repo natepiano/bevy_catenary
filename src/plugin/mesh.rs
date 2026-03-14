@@ -1,0 +1,604 @@
+//! Procedural tube mesh generation from `CableGeometry`.
+//!
+//! Generates a tube mesh by sweeping a circular cross-section along the cable path,
+//! using rotation-minimizing frames to avoid twisting artifacts.
+
+use bevy::mesh::Indices;
+use bevy::mesh::PrimitiveTopology;
+use bevy::prelude::*;
+
+use crate::routing::CableGeometry;
+
+/// Configuration for tube mesh generation.
+#[derive(Clone, Debug)]
+pub struct TubeMeshConfig {
+    /// Radius of the tube cross-section.
+    pub radius:                       f32,
+    /// Number of vertices around the cross-section circle.
+    pub sides:                        u32,
+    /// Whether to cap the start end with a hemisphere.
+    pub cap_start:                    bool,
+    /// Whether to cap the end with a hemisphere.
+    pub cap_end:                      bool,
+    /// Distance to trim from the start (tube begins this far along the path).
+    pub trim_start:                   f32,
+    /// Distance to trim from the end (tube ends this far before the path end).
+    pub trim_end:                     f32,
+    /// Elbow bend radius multiplier relative to tube radius.
+    pub elbow_bend_radius_multiplier: f32,
+    /// Minimum elbow radius multiplier — below this, elbows are skipped.
+    pub elbow_min_radius_multiplier:  f32,
+    /// Number of rings per 90 degrees of elbow bend.
+    pub elbow_rings_per_right_angle:  u32,
+    /// Minimum angle (degrees) between consecutive tangents to trigger an elbow.
+    pub elbow_angle_threshold_deg:    f32,
+}
+
+impl Default for TubeMeshConfig {
+    fn default() -> Self {
+        Self {
+            radius:                       0.02,
+            sides:                        8,
+            cap_start:                    true,
+            cap_end:                      true,
+            trim_start:                   0.0,
+            trim_end:                     0.0,
+            elbow_bend_radius_multiplier: ELBOW_BEND_RADIUS_MULTIPLIER,
+            elbow_min_radius_multiplier:  MIN_ELBOW_RADIUS_MULTIPLIER,
+            elbow_rings_per_right_angle:  KNEE_RINGS_PER_RIGHT_ANGLE,
+            elbow_angle_threshold_deg:    25.0,
+        }
+    }
+}
+
+/// Generate a tube `Mesh` from cable geometry.
+///
+/// All segments are flattened into a single continuous polyline,
+/// producing one seamless tube for the entire cable path.
+pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> Mesh {
+    let sides = config.sides.max(3);
+    let total_length = geometry.total_length.max(0.001);
+
+    // Flatten all segments into one continuous polyline, deduplicating boundary points.
+    let mut all_points: Vec<Vec3> = Vec::new();
+    let mut all_tangents: Vec<Vec3> = Vec::new();
+    let mut all_arc_lengths: Vec<f32> = Vec::new();
+    let mut arc_offset = 0.0_f32;
+
+    for segment in &geometry.segments {
+        if segment.points.len() < 2 {
+            arc_offset += segment.length;
+            continue;
+        }
+
+        let start_idx = if all_points.is_empty() { 0 } else { 1 };
+
+        for i in start_idx..segment.points.len() {
+            all_points.push(segment.points[i]);
+            all_tangents.push(segment.tangents[i]);
+            all_arc_lengths.push(segment.arc_lengths[i] + arc_offset);
+        }
+
+        arc_offset += segment.length;
+    }
+
+    if all_points.len() < 2 {
+        return Mesh::new(PrimitiveTopology::TriangleList, default());
+    }
+
+    // Trim start/end of the path if configured (for junction hiding).
+    if config.trim_start > 0.0 || config.trim_end > 0.0 {
+        trim_path(
+            &mut all_points,
+            &mut all_tangents,
+            &mut all_arc_lengths,
+            config.trim_start,
+            config.trim_end,
+        );
+    }
+
+    if all_points.len() < 2 {
+        return Mesh::new(PrimitiveTopology::TriangleList, default());
+    }
+
+    // Insert elbow joints at sharp bends to create smooth rounded curves.
+    let (all_points, all_tangents, all_arc_lengths) =
+        insert_knee_rings(all_points, all_tangents, all_arc_lengths, config);
+    let point_count = all_points.len();
+
+    // Compute rotation-minimizing frames along the entire path
+    let frames = compute_rmf(&all_points, &all_tangents);
+
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(point_count * sides as usize);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(point_count * sides as usize);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(point_count * sides as usize);
+    let mut indices: Vec<u32> = Vec::new();
+
+    for (i, ((point, _tangent), (frame_normal, binormal))) in all_points
+        .iter()
+        .zip(&all_tangents)
+        .zip(&frames)
+        .enumerate()
+    {
+        let u = all_arc_lengths[i] / total_length;
+
+        // Generate cross-section ring
+        for j in 0..sides {
+            let angle = (j as f32 / sides as f32) * std::f32::consts::TAU;
+            let (sin_a, cos_a) = angle.sin_cos();
+
+            let offset = *frame_normal * cos_a * config.radius + *binormal * sin_a * config.radius;
+            let vertex_pos = *point + offset;
+            let vertex_normal = offset.normalize_or_zero();
+
+            positions.push(vertex_pos.to_array());
+            normals.push(vertex_normal.to_array());
+            uvs.push([u, j as f32 / sides as f32]);
+        }
+
+        // Connect to previous ring with triangles
+        if i > 0 {
+            let base = ((i - 1) * sides as usize) as u32;
+            let next_base = (i * sides as usize) as u32;
+
+            for j in 0..sides {
+                let j_next = (j + 1) % sides;
+
+                let a = base + j;
+                let b = base + j_next;
+                let c = next_base + j;
+                let d = next_base + j_next;
+
+                // CCW winding for outward-facing normals
+                indices.push(a);
+                indices.push(b);
+                indices.push(c);
+
+                indices.push(b);
+                indices.push(d);
+                indices.push(c);
+            }
+        }
+    }
+
+    // Add hemisphere caps at ends (only if configured)
+    let cap_rings = (sides / 2).max(4);
+
+    if point_count >= 2 && config.cap_start {
+        let (start_normal, start_binormal) = frames[0];
+        add_hemisphere_cap(
+            &all_points[0],
+            &(-all_tangents[0]),
+            &start_normal,
+            &start_binormal,
+            config.radius,
+            sides,
+            cap_rings,
+            0,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+        );
+    }
+
+    if point_count >= 2 && config.cap_end {
+        let last = point_count - 1;
+        let last_ring_base = (last * sides as usize) as u32;
+        let (end_normal, end_binormal) = frames[last];
+        add_hemisphere_cap(
+            &all_points[last],
+            &all_tangents[last],
+            &end_normal,
+            &end_binormal,
+            config.radius,
+            sides,
+            cap_rings,
+            last_ring_base,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+        );
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+/// Trim the start and/or end of a path by removing points within the trim distance.
+/// Interpolates a new endpoint at the exact trim boundary.
+fn trim_path(
+    points: &mut Vec<Vec3>,
+    tangents: &mut Vec<Vec3>,
+    arc_lengths: &mut Vec<f32>,
+    trim_start: f32,
+    trim_end: f32,
+) {
+    let total = *arc_lengths.last().unwrap_or(&0.0);
+
+    // Trim start: remove points before trim_start distance
+    if trim_start > 0.0 && points.len() >= 2 {
+        let mut cut = 0;
+        for i in 0..points.len() {
+            if arc_lengths[i] >= trim_start {
+                cut = i;
+                break;
+            }
+        }
+        if cut > 0 && cut < points.len() {
+            // Interpolate a new start point at the trim boundary
+            let prev = cut - 1;
+            let seg_len = arc_lengths[cut] - arc_lengths[prev];
+            if seg_len > f32::EPSILON {
+                let t = (trim_start - arc_lengths[prev]) / seg_len;
+                let new_point = points[prev].lerp(points[cut], t);
+                let new_tangent = tangents[prev].lerp(tangents[cut], t).normalize_or_zero();
+                points[prev] = new_point;
+                tangents[prev] = new_tangent;
+                arc_lengths[prev] = trim_start;
+            }
+            points.drain(..prev);
+            tangents.drain(..prev);
+            arc_lengths.drain(..prev);
+        }
+    }
+
+    // Trim end: remove points after (total - trim_end) distance
+    if trim_end > 0.0 && points.len() >= 2 {
+        let end_boundary = total - trim_end;
+        let mut cut = points.len();
+        for i in (0..points.len()).rev() {
+            if arc_lengths[i] <= end_boundary {
+                cut = i + 1;
+                break;
+            }
+        }
+        if cut > 0 && cut < points.len() {
+            // Interpolate a new end point at the trim boundary
+            let seg_len = arc_lengths[cut] - arc_lengths[cut - 1];
+            if seg_len > f32::EPSILON {
+                let t = (end_boundary - arc_lengths[cut - 1]) / seg_len;
+                let new_point = points[cut - 1].lerp(points[cut], t);
+                let new_tangent = tangents[cut - 1].lerp(tangents[cut], t).normalize_or_zero();
+                points[cut] = new_point;
+                tangents[cut] = new_tangent;
+                arc_lengths[cut] = end_boundary;
+            }
+            points.truncate(cut + 1);
+            tangents.truncate(cut + 1);
+            arc_lengths.truncate(cut + 1);
+        }
+    }
+}
+
+/// Default elbow bend radius multiplier (used in `TubeMeshConfig::default`).
+const ELBOW_BEND_RADIUS_MULTIPLIER: f32 = 1.0;
+
+/// Default minimum elbow radius multiplier (used in `TubeMeshConfig::default`).
+const MIN_ELBOW_RADIUS_MULTIPLIER: f32 = 0.5;
+
+/// Default rings per 90 degrees of bend (used in `TubeMeshConfig::default`).
+const KNEE_RINGS_PER_RIGHT_ANGLE: u32 = 32;
+
+/// Smooth sharp bends in the path using cubic Bézier fillets.
+///
+/// At each sharp bend, the corner region is replaced by a smooth cubic Bézier
+/// curve. Uses actual segment directions (not stored central-difference tangents)
+/// for bend detection and fillet geometry. Tangents are recomputed from the
+/// final path positions before returning, ensuring consistency with `compute_rmf`.
+fn insert_knee_rings(
+    points: Vec<Vec3>,
+    _tangents: Vec<Vec3>,
+    arc_lengths: Vec<f32>,
+    config: &TubeMeshConfig,
+) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
+    let n = points.len();
+    if n < 2 {
+        return (points, _tangents, arc_lengths);
+    }
+
+    let tube_radius = config.radius;
+    let bend_radius = tube_radius * config.elbow_bend_radius_multiplier;
+    let angle_threshold_cos = (config.elbow_angle_threshold_deg.to_radians()).cos();
+    let rings_per_right_angle = config.elbow_rings_per_right_angle;
+    let min_bend_r = tube_radius * config.elbow_min_radius_multiplier;
+
+    let mut out_pts = Vec::with_capacity(n * 2);
+    let mut out_arc = Vec::with_capacity(n * 2);
+
+    out_pts.push(points[0]);
+    out_arc.push(arc_lengths[0]);
+
+    let mut i = 1;
+    while i < n {
+        // Use actual segment directions, not stored central-difference tangents.
+        let dir_in = if i > 0 {
+            (points[i] - points[i - 1]).normalize_or_zero()
+        } else {
+            Vec3::Z
+        };
+        let dir_out = if i + 1 < n {
+            (points[i + 1] - points[i]).normalize_or_zero()
+        } else {
+            // Last point — no outgoing segment, just pass through.
+            out_pts.push(points[i]);
+            out_arc.push(arc_lengths[i]);
+            i += 1;
+            continue;
+        };
+
+        let cos_a = dir_in.dot(dir_out).clamp(-1.0, 1.0);
+
+        if cos_a >= angle_threshold_cos {
+            out_pts.push(points[i]);
+            out_arc.push(arc_lengths[i]);
+            i += 1;
+            continue;
+        }
+
+        let theta = cos_a.acos();
+
+        if bend_radius < min_bend_r {
+            out_pts.push(points[i]);
+            out_arc.push(arc_lengths[i]);
+            i += 1;
+            continue;
+        }
+
+        let half = theta * 0.5;
+        let d = bend_radius * half.tan();
+        let p = points[i];
+
+        // Fillet start/end computed from actual segment directions.
+        let fillet_start = p - dir_in * d;
+        let fillet_end = p + dir_out * d;
+
+        // Remove output points that overlap with the fillet's backward reach.
+        while out_pts.len() > 1 {
+            let last = *out_pts.last().unwrap();
+            if (last - fillet_start).dot(dir_in) > 0.0 {
+                out_pts.pop();
+                out_arc.pop();
+            } else {
+                break;
+            }
+        }
+
+        // Add explicit fillet_start point for precise join location.
+        let base_arc = out_arc.last().copied().unwrap_or(0.0);
+        let dist_to_fillet_start = out_pts
+            .last()
+            .map_or(0.0, |last| last.distance(fillet_start));
+        out_pts.push(fillet_start);
+        out_arc.push(base_arc + dist_to_fillet_start);
+
+        // Cubic Bézier with tangent-matched endpoints:
+        // P0 = fillet_start, tangent at start = dir_in
+        // P3 = fillet_end,   tangent at end   = dir_out
+        let p0 = fillet_start;
+        let p3 = fillet_end;
+        let arm = p0.distance(p3) / 3.0;
+        let p1 = p0 + dir_in * arm;
+        let p2 = p3 - dir_out * arm;
+
+        let num_rings = ((theta / std::f32::consts::FRAC_PI_2) * rings_per_right_angle as f32)
+            .ceil()
+            .max(3.0) as u32;
+
+        let fillet_base_arc = *out_arc.last().unwrap();
+
+        // Estimate fillet length via sampled chord distances.
+        let q1 = 0.125 * (p0 + 3.0 * p1 + 3.0 * p2 + p3) - 0.0625 * (3.0 * p0 + p3);
+        let fillet_len = p0.distance(q1) * 2.0 + q1.distance(p3) * 2.0;
+
+        for k in 1..=num_rings {
+            let t = k as f32 / num_rings as f32;
+            let omt = 1.0 - t;
+
+            // Cubic Bézier: B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
+            let pos = omt * omt * omt * p0
+                + 3.0 * omt * omt * t * p1
+                + 3.0 * omt * t * t * p2
+                + t * t * t * p3;
+
+            let al = fillet_base_arc + t * fillet_len;
+
+            out_pts.push(pos);
+            out_arc.push(al);
+        }
+
+        // Skip forward input points that overlap with the fillet's forward reach.
+        i += 1;
+        while i < n {
+            if (points[i] - fillet_end).dot(dir_out) < 0.0 {
+                i += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Recompute tangents from the modified path positions.
+    // This ensures tangents are consistent with actual segment directions,
+    // which is critical for `compute_rmf` to produce correct frames.
+    let out_tan = recompute_tangents(&out_pts);
+
+    (out_pts, out_tan, out_arc)
+}
+
+/// Recompute tangents from path positions using segment directions.
+///
+/// Interior points use the average of incoming and outgoing directions (central difference).
+/// Endpoints use the direction of their single adjacent segment.
+fn recompute_tangents(points: &[Vec3]) -> Vec<Vec3> {
+    let n = points.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    if n == 1 {
+        return vec![Vec3::Z];
+    }
+
+    let mut tangents = Vec::with_capacity(n);
+
+    // First point: forward direction
+    tangents.push((points[1] - points[0]).normalize_or_zero());
+
+    // Interior points: average of incoming and outgoing directions
+    for i in 1..n - 1 {
+        let dir_in = (points[i] - points[i - 1]).normalize_or_zero();
+        let dir_out = (points[i + 1] - points[i]).normalize_or_zero();
+        tangents.push((dir_in + dir_out).normalize_or_zero());
+    }
+
+    // Last point: backward direction
+    tangents.push((points[n - 1] - points[n - 2]).normalize_or_zero());
+
+    tangents
+}
+
+/// Adds a hemisphere cap to the mesh, connecting to an existing tube ring.
+///
+/// `equator_ring_base` is the index of the first vertex in the existing tube ring
+/// that forms the equator of this hemisphere. The hemisphere sweeps from that ring
+/// toward a pole in the `cap_direction`.
+fn add_hemisphere_cap(
+    center: &Vec3,
+    cap_direction: &Vec3,
+    frame_normal: &Vec3,
+    binormal: &Vec3,
+    radius: f32,
+    sides: u32,
+    cap_rings: u32,
+    equator_ring_base: u32,
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+) {
+    let mut prev_ring_base = equator_ring_base;
+
+    for k in 1..cap_rings {
+        let phi = (k as f32 / cap_rings as f32) * std::f32::consts::FRAC_PI_2;
+        let ring_radius = phi.cos() * radius;
+        let along_offset = phi.sin() * radius;
+        let ring_center = *center + *cap_direction * along_offset;
+
+        let new_ring_base = positions.len() as u32;
+
+        for j in 0..sides {
+            let angle = (j as f32 / sides as f32) * std::f32::consts::TAU;
+            let (sin_a, cos_a) = angle.sin_cos();
+
+            let radial = *frame_normal * cos_a + *binormal * sin_a;
+            let vertex_pos = ring_center + radial * ring_radius;
+            let vertex_normal = (radial * phi.cos() + *cap_direction * phi.sin()).normalize();
+
+            positions.push(vertex_pos.to_array());
+            normals.push(vertex_normal.to_array());
+            uvs.push([0.5, 0.5]);
+        }
+
+        // Connect to previous ring
+        for j in 0..sides {
+            let j_next = (j + 1) % sides;
+
+            let a = prev_ring_base + j;
+            let b = prev_ring_base + j_next;
+            let c = new_ring_base + j;
+            let d = new_ring_base + j_next;
+
+            indices.push(a);
+            indices.push(b);
+            indices.push(c);
+
+            indices.push(b);
+            indices.push(d);
+            indices.push(c);
+        }
+
+        prev_ring_base = new_ring_base;
+    }
+
+    // Pole vertex (tip of hemisphere)
+    let pole_pos = *center + *cap_direction * radius;
+    let pole_idx = positions.len() as u32;
+    positions.push(pole_pos.to_array());
+    normals.push(cap_direction.to_array());
+    uvs.push([0.5, 0.5]);
+
+    // Fan from last ring to pole
+    for j in 0..sides {
+        let j_next = (j + 1) % sides;
+        indices.push(prev_ring_base + j);
+        indices.push(prev_ring_base + j_next);
+        indices.push(pole_idx);
+    }
+}
+
+/// Compute rotation-minimizing frames (parallel transport) along a curve.
+///
+/// Returns a Vec of (normal, binormal) pairs for each point.
+fn compute_rmf(points: &[Vec3], tangents: &[Vec3]) -> Vec<(Vec3, Vec3)> {
+    let n = points.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    let mut frames = Vec::with_capacity(n);
+
+    // Initial frame: find a vector not parallel to the first tangent
+    let t0 = tangents[0];
+    let initial_normal = find_perpendicular(t0);
+    let initial_binormal = t0.cross(initial_normal).normalize_or_zero();
+
+    frames.push((initial_normal, initial_binormal));
+
+    // Propagate frames using parallel transport (double reflection method)
+    for i in 1..n {
+        let (prev_normal, _prev_binormal) = frames[i - 1];
+        let prev_tangent = tangents[i - 1];
+        let curr_tangent = tangents[i];
+
+        // Reflect previous frame through the plane bisecting the two tangents
+        let v1 = points[i] - points[i - 1];
+        let c1 = v1.dot(v1);
+
+        if c1 < f32::EPSILON {
+            frames.push(frames[i - 1]);
+            continue;
+        }
+
+        // First reflection
+        let r_l = prev_normal - (2.0 / c1) * v1.dot(prev_normal) * v1;
+        let r_t = prev_tangent - (2.0 / c1) * v1.dot(prev_tangent) * v1;
+
+        // Second reflection (to align reflected tangent with current tangent)
+        let v2 = curr_tangent - r_t;
+        let c2 = v2.dot(v2);
+
+        let new_normal = if c2 < f32::EPSILON {
+            r_l
+        } else {
+            r_l - (2.0 / c2) * v2.dot(r_l) * v2
+        }
+        .normalize_or_zero();
+
+        let new_binormal = curr_tangent.cross(new_normal).normalize_or_zero();
+
+        frames.push((new_normal, new_binormal));
+    }
+
+    frames
+}
+
+/// Find a vector perpendicular to the given direction.
+fn find_perpendicular(v: Vec3) -> Vec3 {
+    let candidate = if v.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+    v.cross(candidate).normalize_or_zero()
+}

@@ -1,0 +1,30 @@
+[package]
+authors     = ["natepiano"]
+description = "Physics-based 3D cable routing with catenary geometry and automatic pathfinding for Bevy"
+edition     = "2024"
+homepage    = "https://github.com/natepiano/bevy_catenary"
+license     = "MIT OR Apache-2.0"
+name        = "bevy_catenary"
+repository  = "https://github.com/natepiano/bevy_catenary"
+version     = "0.1.0"
+
+[dependencies]
+bevy = { version = "0.18.1", default-features = false, features = [
+  "bevy_asset",
+  "bevy_gizmos",
+  "bevy_mesh",
+  "bevy_pbr",
+  "bevy_render",
+] }
+
+[[example]]
+name = "cable_playground"
+
+[dev-dependencies]
+bevy = { version = "0.18.1", features = ["default"] }
+bevy-inspector-egui = "0.36.0"
+bevy_brp_extras = "0.18.7"
+bevy_panorbit_camera = "0.34.0"
+bevy_panorbit_camera_ext = { path = "../bevy_panorbit_camera_ext", features = [
+  "visualization",
+] }
