@@ -42,7 +42,9 @@ pub use plugin::CableDebugEnabled;
 pub use plugin::CableGizmoGroup;
 pub use plugin::CatenaryPlugin;
 pub use plugin::ComputedCableGeometry;
+pub use plugin::ElbowMetadata;
 pub use plugin::TubeMeshConfig;
+pub use plugin::compute_elbow_metadata;
 pub use plugin::generate_tube_mesh;
 // Solvers
 pub use routing::AStarPlanner;

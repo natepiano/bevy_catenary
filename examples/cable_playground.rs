@@ -1,5 +1,7 @@
 //! Interactive cable playground demonstrating catenary, A*, and orthogonal routing.
 //!
+//! Each cable type is laid out side by side with a 3D label above it.
+//!
 //! Controls:
 //! - Orbit: Middle-mouse drag (or two-finger trackpad)
 //! - Pan: Shift + middle-mouse
@@ -13,11 +15,10 @@ use std::time::Duration;
 
 use bevy::light::NotShadowCaster;
 use bevy::math::curve::easing::EaseFunction;
-use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::picking::Pickable;
+use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::prelude::*;
 use bevy_brp_extras::BrpExtrasPlugin;
-use bevy_catenary::generate_tube_mesh;
 use bevy_catenary::AStarPlanner;
 use bevy_catenary::Cable;
 use bevy_catenary::CableDebugEnabled;
@@ -29,6 +30,7 @@ use bevy_catenary::Obstacle;
 use bevy_catenary::OrthogonalPlanner;
 use bevy_catenary::Router;
 use bevy_catenary::TubeMeshConfig;
+use bevy_catenary::generate_tube_mesh;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
@@ -37,42 +39,51 @@ use bevy_panorbit_camera::PanOrbitCamera;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use bevy_panorbit_camera::TrackpadBehavior;
 use bevy_panorbit_camera_ext::AnimateToFit;
-use bevy_panorbit_camera_ext::FitVisualization;
 use bevy_panorbit_camera_ext::PanOrbitCameraExtPlugin;
 use bevy_panorbit_camera_ext::ZoomToFit;
 
 // ============================================================================
-// Constants
+// Layout — five sections spread along the X axis
 // ============================================================================
 
-// Node positions
-const NODE_A_POS: Vec3 = Vec3::new(-3.0, 2.0, -2.0);
-const NODE_B_POS: Vec3 = Vec3::new(3.0, 2.5, -2.0);
-const NODE_C_POS: Vec3 = Vec3::new(-3.0, 1.0, 2.0);
-const NODE_D_POS: Vec3 = Vec3::new(3.0, 1.5, 2.0);
-const NODE_E_POS: Vec3 = Vec3::new(-3.0, 1.8, 5.0);
-const NODE_F_POS: Vec3 = Vec3::new(3.0, 1.8, 5.0);
+/// Spacing between section centers along X.
+const SECTION_SPACING: f32 = 10.0;
+
+/// Node height (Y) for cable endpoints.
+const NODE_Y: f32 = 2.0;
+
+/// Half-width of each cable span (endpoints at ±SPAN_HALF_X from section center).
+const SPAN_HALF_X: f32 = 3.0;
+
+/// Section center X positions (5 sections: -20, -10, 0, 10, 20).
+const SECTION_X: [f32; 5] = [
+    -2.0 * SECTION_SPACING,
+    -1.0 * SECTION_SPACING,
+    0.0,
+    1.0 * SECTION_SPACING,
+    2.0 * SECTION_SPACING,
+];
 
 // Node cube size (half-extent per axis)
 const NODE_CUBE_SIZE: f32 = 0.3;
 
 // Cable slack values
-const CABLE_AB_SLACK: f32 = 1.2;
-const CABLE_AC_SLACK: f32 = 1.5;
-const CABLE_BD_SLACK: f32 = 1.05;
+const SLACK_NORMAL: f32 = 1.2;
+const SLACK_LOOSE: f32 = 1.5;
+const SLACK_TAUT: f32 = 1.05;
 
-// Obstacle between E and F
-const OBSTACLE_POS: Vec3 = Vec3::new(0.0, 1.8, 5.0);
+// Obstacle (for A* section)
 const OBSTACLE_HALF_EXTENTS: Vec3 = Vec3::new(0.8, 0.8, 0.8);
 
 // Ground plane
-const GROUND_SIZE: f32 = 16.0;
+const GROUND_WIDTH: f32 = 56.0;
+const GROUND_DEPTH: f32 = 14.0;
 
 // Camera
-const CAMERA_START_YAW: f32 = -0.4;
-const CAMERA_START_PITCH: f32 = 0.5;
-const CAMERA_START_RADIUS: f32 = 15.0;
-const CAMERA_FOCUS: Vec3 = Vec3::new(0.0, 1.5, 1.5);
+const CAMERA_START_YAW: f32 = 0.0;
+const CAMERA_START_PITCH: f32 = 0.45;
+const CAMERA_START_RADIUS: f32 = 38.0;
+const CAMERA_FOCUS: Vec3 = Vec3::new(0.0, 0.5, 0.0);
 const ANIMATE_FIT_DURATION_MS: u64 = 1200;
 const ZOOM_DURATION_MS: u64 = 1000;
 const ZOOM_MARGIN: f32 = 0.1;
@@ -89,21 +100,16 @@ const JOINT_RADIUS_MULTIPLIER: f32 = 1.5;
 const JOINT_SPHERE_SEGMENTS: u32 = 16;
 
 // Cable material color (orange)
-const CABLE_COLOR_R: f32 = 0.9;
-const CABLE_COLOR_G: f32 = 0.5;
-const CABLE_COLOR_B: f32 = 0.1;
+const CABLE_COLOR: Color = Color::srgb(0.9, 0.5, 0.1);
 
 // Obstacle material
-const OBSTACLE_ALPHA: f32 = 0.25;
-const OBSTACLE_COLOR_R: f32 = 0.8;
-const OBSTACLE_COLOR_G: f32 = 0.2;
-const OBSTACLE_COLOR_B: f32 = 0.2;
+const OBSTACLE_COLOR: Color = Color::srgba(0.8, 0.2, 0.2, 0.25);
 
 // Node colors
-const NODE_COLOR_R: f32 = 0.4;
-const NODE_COLOR_G: f32 = 0.6;
-const NODE_COLOR_B: f32 = 0.8;
-const NODE_ALPHA: f32 = 0.8;
+const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.8);
+
+// Label height above nodes
+const LABEL_Y_OFFSET: f32 = 0.8;
 
 // UI
 const UI_FONT_SIZE: f32 = 14.0;
@@ -151,6 +157,8 @@ struct CableTuneSettings {
     elbow_rings_per_right_angle:  u32,
     #[inspector(min = 1.0, max = 90.0, display = NumberDisplay::Slider)]
     elbow_angle_threshold_deg:    f32,
+    #[inspector(min = 0.1, max = 3.0, display = NumberDisplay::Slider)]
+    elbow_arm_multiplier:         f32,
 }
 
 impl Default for CableTuneSettings {
@@ -164,6 +172,7 @@ impl Default for CableTuneSettings {
             elbow_min_radius_multiplier:  0.5,
             elbow_rings_per_right_angle:  32,
             elbow_angle_threshold_deg:    25.0,
+            elbow_arm_multiplier:         1.0,
         }
     }
 }
@@ -171,14 +180,6 @@ impl Default for CableTuneSettings {
 /// Marker for spawned hub sphere entities so they can be despawned on rebuild.
 #[derive(Component)]
 struct HubSphere;
-
-/// When false, clicking meshes does not trigger zoom-to-fit.
-#[derive(Resource)]
-struct ClickToZoomEnabled(bool);
-
-impl Default for ClickToZoomEnabled {
-    fn default() -> Self { Self(true) }
-}
 
 /// When true, the inspector panel is visible.
 #[derive(Resource)]
@@ -195,7 +196,13 @@ impl Default for InspectorVisible {
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins,
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Cable Playground".into(),
+                    ..default()
+                }),
+                ..default()
+            }),
             EguiPlugin::default(),
             PanOrbitCameraPlugin,
             PanOrbitCameraExtPlugin,
@@ -206,21 +213,10 @@ fn main() {
                 .run_if(|visible: Res<InspectorVisible>| visible.0),
         ))
         .init_resource::<CableTuneSettings>()
-        .init_resource::<ClickToZoomEnabled>()
         .init_resource::<InspectorVisible>()
         .add_systems(
             Startup,
-            (
-                setup_camera,
-                (
-                    setup_scene,
-                    setup_nodes,
-                    setup_cables,
-                    setup_obstacle,
-                    setup_ui,
-                ),
-            )
-                .chain(),
+            (setup_camera, (setup_scene, setup_sections, setup_ui)).chain(),
         )
         .add_systems(
             Update,
@@ -228,6 +224,8 @@ fn main() {
                 generate_cable_meshes,
                 handle_keyboard,
                 rebuild_on_settings_change.run_if(resource_changed::<CableTuneSettings>),
+                update_label_positions,
+                on_label_clicked,
             ),
         )
         .run();
@@ -266,7 +264,6 @@ fn setup_camera(mut commands: Commands) {
         })
         .id();
 
-    // Store camera entity — scene_bounds will be set when ground spawns
     commands.insert_resource(SceneEntities {
         camera,
         scene_bounds: Entity::PLACEHOLDER,
@@ -279,10 +276,10 @@ fn setup_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut scene: ResMut<SceneEntities>,
 ) {
-    // Ground plane (click to deselect and zoom back to scene)
+    // Wide ground plane
     let ground = commands
         .spawn((
-            Mesh3d(meshes.add(Plane3d::default().mesh().size(GROUND_SIZE, GROUND_SIZE))),
+            Mesh3d(meshes.add(Plane3d::default().mesh().size(GROUND_WIDTH, GROUND_DEPTH))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::srgb(0.3, 0.5, 0.3),
                 ..default()
@@ -293,7 +290,7 @@ fn setup_scene(
 
     scene.scene_bounds = ground;
 
-    // Directional light with shadows
+    // Directional light
     commands.spawn((
         DirectionalLight {
             illuminance: DIRECTIONAL_LIGHT_ILLUMINANCE,
@@ -304,101 +301,128 @@ fn setup_scene(
     ));
 }
 
-fn setup_nodes(
+/// Spawn all five cable sections side by side with labels.
+fn setup_sections(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let cube_mesh = meshes.add(Cuboid::new(
-        NODE_CUBE_SIZE * 2.0,
-        NODE_CUBE_SIZE * 2.0,
-        NODE_CUBE_SIZE * 2.0,
-    ));
-    let node_material = materials.add(StandardMaterial {
-        base_color: Color::srgba(NODE_COLOR_R, NODE_COLOR_G, NODE_COLOR_B, NODE_ALPHA),
-        alpha_mode: AlphaMode::Blend,
-        ..default()
-    });
-
-    let positions = [
-        NODE_A_POS, NODE_B_POS, NODE_C_POS, NODE_D_POS, NODE_E_POS, NODE_F_POS,
-    ];
-
-    for pos in positions {
-        commands
-            .spawn((
-                Mesh3d(cube_mesh.clone()),
-                MeshMaterial3d(node_material.clone()),
-                Transform::from_translation(pos),
-            ))
-            .observe(on_mesh_clicked);
-    }
-}
-
-fn setup_cables(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
-    // Store the shared cable material
+    // Shared materials
     let cable_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(CABLE_COLOR_R, CABLE_COLOR_G, CABLE_COLOR_B),
+        base_color: CABLE_COLOR,
         ..default()
     });
     commands.insert_resource(CableMaterial(cable_mat));
 
-    // Cable 1: A -> B, catenary with slack 1.2
-    commands.spawn(Cable {
-        start:      NODE_A_POS,
-        end:        NODE_B_POS,
-        solver:     Box::new(CatenarySolver::new().with_slack(CABLE_AB_SLACK)),
-        obstacles:  vec![],
-        resolution: 0,
+    let node_mesh = meshes.add(Cuboid::new(
+        NODE_CUBE_SIZE * 2.0,
+        NODE_CUBE_SIZE * 2.0,
+        NODE_CUBE_SIZE * 2.0,
+    ));
+    let node_mat = materials.add(StandardMaterial {
+        base_color: NODE_COLOR,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
     });
 
-    // Cable 2: A -> C, catenary with slack 1.5 (loose)
+    // --- Section 0: Catenary (normal slack) ---
+    let cx = SECTION_X[0];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+    spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
     commands.spawn(Cable {
-        start:      NODE_A_POS,
-        end:        NODE_C_POS,
-        solver:     Box::new(CatenarySolver::new().with_slack(CABLE_AC_SLACK)),
-        obstacles:  vec![],
+        start,
+        end,
+        solver: Box::new(CatenarySolver::new().with_slack(SLACK_NORMAL)),
+        obstacles: vec![],
         resolution: 0,
     });
+    spawn_label(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        cx,
+        "Catenary\nslack 1.2",
+    );
 
-    // Cable 3: B -> D, catenary with slack 1.05 (taut)
+    // --- Section 1: Catenary (loose) ---
+    let cx = SECTION_X[1];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+    spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
     commands.spawn(Cable {
-        start:      NODE_B_POS,
-        end:        NODE_D_POS,
-        solver:     Box::new(CatenarySolver::new().with_slack(CABLE_BD_SLACK)),
-        obstacles:  vec![],
+        start,
+        end,
+        solver: Box::new(CatenarySolver::new().with_slack(SLACK_LOOSE)),
+        obstacles: vec![],
         resolution: 0,
     });
+    spawn_label(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        cx,
+        "Catenary\nslack 1.5",
+    );
 
-    // Cable 4: C -> D, orthogonal planner + linear solver via `Router`
+    // --- Section 2: Catenary (taut) ---
+    let cx = SECTION_X[2];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+    spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
     commands.spawn(Cable {
-        start:      NODE_C_POS,
-        end:        NODE_D_POS,
-        solver:     Box::new(Router::new(OrthogonalPlanner::new(), LinearSolver)),
-        obstacles:  vec![],
+        start,
+        end,
+        solver: Box::new(CatenarySolver::new().with_slack(SLACK_TAUT)),
+        obstacles: vec![],
         resolution: 0,
     });
+    spawn_label(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        cx,
+        "Catenary\nslack 1.05 (taut)",
+    );
 
-    // Cable 5: E -> F, A* planner + catenary solver via `Router`, with obstacle
-    let obstacle = Obstacle::new(OBSTACLE_HALF_EXTENTS, OBSTACLE_POS);
+    // --- Section 3: Orthogonal routing ---
+    let cx = SECTION_X[3];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y - 0.5, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y + 0.5, 0.0);
+    spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
     commands.spawn(Cable {
-        start:      NODE_E_POS,
-        end:        NODE_F_POS,
-        solver:     Box::new(Router::new(
+        start,
+        end,
+        solver: Box::new(Router::new(OrthogonalPlanner::new(), LinearSolver)),
+        obstacles: vec![],
+        resolution: 0,
+    });
+    spawn_label(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        cx,
+        "Orthogonal\n+ Linear",
+    );
+
+    // --- Section 4: A* routing around obstacle ---
+    let cx = SECTION_X[4];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+    let obstacle_pos = Vec3::new(cx, NODE_Y, 0.0);
+    let obstacle = Obstacle::new(OBSTACLE_HALF_EXTENTS, obstacle_pos);
+    spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
+    commands.spawn(Cable {
+        start,
+        end,
+        solver: Box::new(Router::new(
             AStarPlanner::new(),
-            CatenarySolver::new().with_slack(CABLE_AB_SLACK),
+            CatenarySolver::new().with_slack(SLACK_NORMAL),
         )),
-        obstacles:  vec![obstacle],
+        obstacles: vec![obstacle],
         resolution: 0,
     });
-}
-
-fn setup_obstacle(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // Translucent box between E and F
+    // Obstacle box
     commands
         .spawn((
             Mesh3d(meshes.add(Cuboid::new(
@@ -407,31 +431,168 @@ fn setup_obstacle(
                 OBSTACLE_HALF_EXTENTS.z * 2.0,
             ))),
             MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgba(
-                    OBSTACLE_COLOR_R,
-                    OBSTACLE_COLOR_G,
-                    OBSTACLE_COLOR_B,
-                    OBSTACLE_ALPHA,
-                ),
+                base_color: OBSTACLE_COLOR,
                 alpha_mode: AlphaMode::Blend,
                 ..default()
             })),
-            Transform::from_translation(OBSTACLE_POS),
+            Transform::from_translation(obstacle_pos),
             NotShadowCaster,
         ))
         .observe(on_mesh_clicked);
+    spawn_label(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        cx,
+        "A* + Catenary\n(obstacle)",
+    );
+}
+
+/// Spawn a pair of node cubes at the given positions.
+fn spawn_node_pair(
+    commands: &mut Commands,
+    mesh: &Handle<Mesh>,
+    material: &Handle<StandardMaterial>,
+    start: Vec3,
+    end: Vec3,
+) {
+    for pos in [start, end] {
+        commands
+            .spawn((
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(material.clone()),
+                Transform::from_translation(pos),
+            ))
+            .observe(on_mesh_clicked);
+    }
+}
+
+/// Links a UI label to its world-space anchor and bounds entity for zoom-to-fit.
+#[derive(Component)]
+struct SectionLabel {
+    world_pos:     Vec3,
+    bounds_entity: Entity,
+}
+
+/// Marker for the invisible bounds mesh of a section.
+#[derive(Component)]
+struct SectionBounds;
+
+/// Spawn an invisible bounds mesh, and a clickable UI label anchored to the section.
+fn spawn_label(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    center_x: f32,
+    text: &str,
+) {
+    // Invisible bounds cube spanning the section (for ZoomToFit targeting)
+    let bounds_entity = commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(SPAN_HALF_X * 2.0, NODE_Y + 1.0, 1.0))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgba(0.0, 0.0, 0.0, 0.0),
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            })),
+            Transform::from_translation(Vec3::new(center_x, NODE_Y * 0.5, 0.0)),
+            Pickable::IGNORE,
+            SectionBounds,
+        ))
+        .id();
+
+    // Clickable UI label with dark background
+    commands.spawn((
+        Button,
+        Node {
+            position_type: PositionType::Absolute,
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+        SectionLabel {
+            world_pos: Vec3::new(center_x, NODE_Y + LABEL_Y_OFFSET, 0.0),
+            bounds_entity,
+        },
+        children![(
+            Text::new(text),
+            TextFont {
+                font_size: 13.0,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(Justify::Center),
+        )],
+    ));
+}
+
+/// Project label world positions to screen each frame. Hide if off-screen.
+fn update_label_positions(
+    mut labels: Query<(&SectionLabel, &mut Node, &mut Visibility)>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+) {
+    let Ok((camera, cam_tf)) = camera_query.single() else {
+        return;
+    };
+    let Some(viewport_size) = camera.logical_viewport_size() else {
+        return;
+    };
+
+    for (label, mut node, mut vis) in &mut labels {
+        let cam_forward = cam_tf.forward().as_vec3();
+        let to_label = label.world_pos - cam_tf.translation();
+        if cam_forward.dot(to_label) < 0.0 {
+            *vis = Visibility::Hidden;
+            continue;
+        }
+        match camera.world_to_viewport(cam_tf, label.world_pos) {
+            Ok(screen_pos) => {
+                let x = screen_pos.x - 55.0;
+                let y = screen_pos.y - 20.0;
+                if x < -80.0 || x > viewport_size.x || y < -10.0 || y > viewport_size.y {
+                    *vis = Visibility::Hidden;
+                } else {
+                    *vis = Visibility::Inherited;
+                    node.left = Val::Px(x);
+                    node.top = Val::Px(y);
+                }
+            },
+            Err(_) => {
+                *vis = Visibility::Hidden;
+            },
+        }
+    }
+}
+
+/// When a label button is clicked, zoom-to-fit on its section bounds.
+fn on_label_clicked(
+    interactions: Query<(&Interaction, &SectionLabel), Changed<Interaction>>,
+    mut commands: Commands,
+    scene: Res<SceneEntities>,
+) {
+    for (interaction, label) in &interactions {
+        if *interaction == Interaction::Pressed {
+            commands.trigger(
+                ZoomToFit::new(scene.camera, label.bounds_entity)
+                    .margin(ZOOM_MARGIN_MESH)
+                    .duration(Duration::from_millis(ZOOM_DURATION_MS))
+                    .easing(EaseFunction::CubicOut),
+            );
+        }
+    }
 }
 
 fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
     commands.spawn((
         Text::new(
-            "Cable Playground\n\n\
-             Orbit: Middle-mouse (or two-finger trackpad)\n\
+            "Orbit: Middle-mouse (or two-finger trackpad)\n\
              Pan: Shift + middle-mouse\n\
              Zoom: Scroll wheel (or pinch)\n\n\
-             Click mesh - Zoom to fit\n\
+             Click label - Zoom to cable\n\
              Click ground - Zoom back to scene\n\
-             Esc - Toggle click-to-zoom\n\
              D - Toggle debug gizmos\n\
              H - Zoom to fit entire scene\n\
              I - Toggle inspector",
@@ -442,7 +603,7 @@ fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
         },
         Node {
             position_type: PositionType::Absolute,
-            top: Val::Px(12.0),
+            bottom: Val::Px(12.0),
             left: Val::Px(12.0),
             ..default()
         },
@@ -509,6 +670,8 @@ fn generate_cable_meshes(
             elbow_min_radius_multiplier:  settings.elbow_min_radius_multiplier,
             elbow_rings_per_right_angle:  settings.elbow_rings_per_right_angle,
             elbow_angle_threshold_deg:    settings.elbow_angle_threshold_deg,
+            elbow_arm_multiplier:         settings.elbow_arm_multiplier,
+            elbow_arm_overrides:          None,
         };
 
         let mesh = generate_tube_mesh(geometry, &config);
@@ -551,12 +714,9 @@ fn rebuild_on_settings_change(
     hub_spheres: Query<Entity, With<HubSphere>>,
     mesh_children: Query<(Entity, &ChildOf), With<Mesh3d>>,
 ) {
-    // Despawn hub spheres
     for entity in &hub_spheres {
         commands.entity(entity).despawn();
     }
-
-    // Despawn mesh children of cables and remove the spawned marker
     for entity in &cable_meshes {
         commands.entity(entity).remove::<CableMeshSpawned>();
     }
@@ -572,36 +732,17 @@ fn handle_keyboard(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
     mut debug_enabled: ResMut<CableDebugEnabled>,
-    mut click_to_zoom: ResMut<ClickToZoomEnabled>,
     mut inspector_visible: ResMut<InspectorVisible>,
     scene: Res<SceneEntities>,
-    viz_query: Query<(), With<FitVisualization>>,
 ) {
-    // Esc: Toggle click-to-zoom
-    if keyboard.just_pressed(KeyCode::Escape) {
-        click_to_zoom.0 = !click_to_zoom.0;
-        info!(
-            "Click-to-zoom: {}",
-            if click_to_zoom.0 { "ON" } else { "OFF" }
-        );
-    }
-
-    // D: Toggle debug gizmos + fit visualization
     if keyboard.just_pressed(KeyCode::KeyD) {
         debug_enabled.0 = !debug_enabled.0;
-        if viz_query.get(scene.camera).is_ok() {
-            commands.entity(scene.camera).remove::<FitVisualization>();
-        } else {
-            commands.entity(scene.camera).insert(FitVisualization);
-        }
     }
 
-    // I: Toggle inspector panel
     if keyboard.just_pressed(KeyCode::KeyI) {
         inspector_visible.0 = !inspector_visible.0;
     }
 
-    // H: Zoom to fit entire scene
     if keyboard.just_pressed(KeyCode::KeyH) {
         commands.trigger(
             AnimateToFit::new(scene.camera, scene.scene_bounds)
@@ -623,12 +764,7 @@ fn on_mesh_clicked(
     click: On<Pointer<Click>>,
     mut commands: Commands,
     selected: Query<Entity, With<Selected>>,
-    enabled: Res<ClickToZoomEnabled>,
 ) {
-    if !enabled.0 {
-        return;
-    }
-
     for entity in &selected {
         commands.entity(entity).remove::<Selected>();
     }
@@ -650,12 +786,7 @@ fn on_ground_clicked(
     mut commands: Commands,
     scene: Res<SceneEntities>,
     selected: Query<Entity, With<Selected>>,
-    enabled: Res<ClickToZoomEnabled>,
 ) {
-    if !enabled.0 {
-        return;
-    }
-
     for entity in &selected {
         commands.entity(entity).remove::<Selected>();
     }
@@ -674,7 +805,6 @@ fn on_ground_clicked(
 // ============================================================================
 
 /// Quantize a position to a grid key for detecting shared endpoints.
-/// Uses millimeter precision to avoid floating point equality issues.
 const QUANTIZE_SCALE: f32 = 1000.0;
 
 fn quantize_position(pos: Vec3) -> [i32; 3] {

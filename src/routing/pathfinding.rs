@@ -147,6 +147,8 @@ impl AStarPlanner {
     }
 
     /// Run A* and return the path as grid cells.
+    ///
+    /// Run A* and return the path as grid cells.
     fn find_path(
         &self,
         start: Cell,

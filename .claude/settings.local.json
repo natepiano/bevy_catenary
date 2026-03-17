@@ -27,7 +27,9 @@
       "WebFetch(domain:cad.onshape.com)",
       "WebFetch(domain:www.sciencedirect.com)",
       "WebSearch",
-      "mcp__brp__world_get_resources"
+      "mcp__brp__world_get_resources",
+      "mcp__brp__brp_extras_send_keys",
+      "mcp__brp__brp_launch"
     ]
   }
 }

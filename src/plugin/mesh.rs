@@ -9,6 +9,18 @@ use bevy::prelude::*;
 
 use crate::routing::CableGeometry;
 
+/// Default elbow bend radius multiplier (used in `TubeMeshConfig::default`).
+const ELBOW_BEND_RADIUS_MULTIPLIER: f32 = 1.0;
+
+/// Default minimum elbow radius multiplier (used in `TubeMeshConfig::default`).
+const MIN_ELBOW_RADIUS_MULTIPLIER: f32 = 0.5;
+
+/// Default rings per 90 degrees of bend (used in `TubeMeshConfig::default`).
+const KNEE_RINGS_PER_RIGHT_ANGLE: u32 = 32;
+
+/// Default arm multiplier for Bézier control points (used in `TubeMeshConfig::default`).
+const DEFAULT_ARM_MULTIPLIER: f32 = 1.0;
+
 /// Configuration for tube mesh generation.
 #[derive(Clone, Debug)]
 pub struct TubeMeshConfig {
@@ -32,6 +44,13 @@ pub struct TubeMeshConfig {
     pub elbow_rings_per_right_angle:  u32,
     /// Minimum angle (degrees) between consecutive tangents to trigger an elbow.
     pub elbow_angle_threshold_deg:    f32,
+    /// Multiplier for Bézier arm length at elbows (default 1.0).
+    /// Controls how far P1/P2 extend from P0/P3: `arm = (distance / 3.0) * multiplier`.
+    pub elbow_arm_multiplier:         f32,
+    /// Per-elbow arm overrides as `(p1_arm, p2_arm)` distances.
+    /// When set, each elbow uses its own independent arm lengths instead of the global
+    /// `elbow_arm_multiplier`. `None` = use the global multiplier for all elbows.
+    pub elbow_arm_overrides:          Option<Vec<(f32, f32)>>,
 }
 
 impl Default for TubeMeshConfig {
@@ -47,6 +66,8 @@ impl Default for TubeMeshConfig {
             elbow_min_radius_multiplier:  MIN_ELBOW_RADIUS_MULTIPLIER,
             elbow_rings_per_right_angle:  KNEE_RINGS_PER_RIGHT_ANGLE,
             elbow_angle_threshold_deg:    25.0,
+            elbow_arm_multiplier:         DEFAULT_ARM_MULTIPLIER,
+            elbow_arm_overrides:          None,
         }
     }
 }
@@ -276,15 +297,6 @@ fn trim_path(
     }
 }
 
-/// Default elbow bend radius multiplier (used in `TubeMeshConfig::default`).
-const ELBOW_BEND_RADIUS_MULTIPLIER: f32 = 1.0;
-
-/// Default minimum elbow radius multiplier (used in `TubeMeshConfig::default`).
-const MIN_ELBOW_RADIUS_MULTIPLIER: f32 = 0.5;
-
-/// Default rings per 90 degrees of bend (used in `TubeMeshConfig::default`).
-const KNEE_RINGS_PER_RIGHT_ANGLE: u32 = 32;
-
 /// Smooth sharp bends in the path using cubic Bézier fillets.
 ///
 /// At each sharp bend, the corner region is replaced by a smooth cubic Bézier
@@ -314,6 +326,7 @@ fn insert_knee_rings(
     out_pts.push(points[0]);
     out_arc.push(arc_lengths[0]);
 
+    let mut elbow_idx = 0_usize;
     let mut i = 1;
     while i < n {
         // Use actual segment directions, not stored central-difference tangents.
@@ -382,9 +395,21 @@ fn insert_knee_rings(
         // P3 = fillet_end,   tangent at end   = dir_out
         let p0 = fillet_start;
         let p3 = fillet_end;
-        let arm = p0.distance(p3) / 3.0;
-        let p1 = p0 + dir_in * arm;
-        let p2 = p3 - dir_out * arm;
+        let max_arm = d * 0.95;
+        let (p1_arm, p2_arm) = if let Some(ref overrides) = config.elbow_arm_overrides {
+            if let Some(&(a1, a2)) = overrides.get(elbow_idx) {
+                (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm))
+            } else {
+                let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
+                (a, a)
+            }
+        } else {
+            let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
+            (a, a)
+        };
+        let p1 = p0 + dir_in * p1_arm;
+        let p2 = p3 - dir_out * p2_arm;
+        elbow_idx += 1;
 
         let num_rings = ((theta / std::f32::consts::FRAC_PI_2) * rings_per_right_angle as f32)
             .ceil()
@@ -460,6 +485,133 @@ fn recompute_tangents(points: &[Vec3]) -> Vec<Vec3> {
     tangents.push((points[n - 1] - points[n - 2]).normalize_or_zero());
 
     tangents
+}
+
+/// Metadata about a single elbow fillet, for visualization and interactive editing.
+#[derive(Clone, Debug)]
+pub struct ElbowMetadata {
+    /// Fillet start point (on incoming straight section).
+    pub p0:      Vec3,
+    /// First control point (along incoming direction from `p0`).
+    pub p1:      Vec3,
+    /// Second control point (along outgoing direction toward `p3`).
+    pub p2:      Vec3,
+    /// Fillet end point (on outgoing straight section).
+    pub p3:      Vec3,
+    /// Incoming segment direction at the elbow.
+    pub dir_in:  Vec3,
+    /// Outgoing segment direction at the elbow.
+    pub dir_out: Vec3,
+    /// Arm length for P1 (distance from `p0` to `p1` along `dir_in`).
+    pub p1_arm:  f32,
+    /// Arm length for P2 (distance from `p3` to `p2` along `-dir_out`).
+    pub p2_arm:  f32,
+    /// Fillet reach distance — maximum arm before loops form.
+    pub d:       f32,
+}
+
+/// Compute elbow metadata for all fillet bends in the geometry.
+///
+/// Returns one `ElbowMetadata` per detected sharp bend, containing the four
+/// Bézier control points and constraint directions. This is useful for
+/// debug visualization and interactive editing of elbow curves.
+pub fn compute_elbow_metadata(
+    geometry: &CableGeometry,
+    config: &TubeMeshConfig,
+) -> Vec<ElbowMetadata> {
+    // Flatten geometry into a single polyline (same as generate_tube_mesh).
+    let mut points: Vec<Vec3> = Vec::new();
+    let mut arc_lengths: Vec<f32> = Vec::new();
+    let mut arc_offset = 0.0_f32;
+
+    for segment in &geometry.segments {
+        if segment.points.len() < 2 {
+            arc_offset += segment.length;
+            continue;
+        }
+        let start_idx = if points.is_empty() { 0 } else { 1 };
+        for i in start_idx..segment.points.len() {
+            points.push(segment.points[i]);
+            arc_lengths.push(segment.arc_lengths[i] + arc_offset);
+        }
+        arc_offset += segment.length;
+    }
+
+    if points.len() < 3 {
+        return Vec::new();
+    }
+
+    // Trim (same logic as generate_tube_mesh).
+    if config.trim_start > 0.0 || config.trim_end > 0.0 {
+        let mut tangents = recompute_tangents(&points);
+        trim_path(
+            &mut points,
+            &mut tangents,
+            &mut arc_lengths,
+            config.trim_start,
+            config.trim_end,
+        );
+    }
+
+    let n = points.len();
+    let tube_radius = config.radius;
+    let bend_radius = tube_radius * config.elbow_bend_radius_multiplier;
+    let angle_threshold_cos = (config.elbow_angle_threshold_deg.to_radians()).cos();
+    let min_bend_r = tube_radius * config.elbow_min_radius_multiplier;
+
+    let mut elbows = Vec::new();
+    let mut elbow_idx = 0_usize;
+
+    for i in 1..n - 1 {
+        let dir_in = (points[i] - points[i - 1]).normalize_or_zero();
+        let dir_out = (points[i + 1] - points[i]).normalize_or_zero();
+        let cos_a = dir_in.dot(dir_out).clamp(-1.0, 1.0);
+
+        if cos_a >= angle_threshold_cos {
+            continue;
+        }
+
+        if bend_radius < min_bend_r {
+            continue;
+        }
+
+        let theta = cos_a.acos();
+        let half = theta * 0.5;
+        let d = bend_radius * half.tan();
+        let p = points[i];
+
+        let p0 = p - dir_in * d;
+        let p3 = p + dir_out * d;
+        let max_arm = d * 0.95;
+        let (p1_arm, p2_arm) = if let Some(ref overrides) = config.elbow_arm_overrides {
+            if let Some(&(a1, a2)) = overrides.get(elbow_idx) {
+                (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm))
+            } else {
+                let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
+                (a, a)
+            }
+        } else {
+            let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
+            (a, a)
+        };
+        let p1 = p0 + dir_in * p1_arm;
+        let p2 = p3 - dir_out * p2_arm;
+
+        elbows.push(ElbowMetadata {
+            p0,
+            p1,
+            p2,
+            p3,
+            dir_in,
+            dir_out,
+            p1_arm,
+            p2_arm,
+            d,
+        });
+        elbow_idx += 1;
+    }
+
+    elbows
 }
 
 /// Adds a hemisphere cap to the mesh, connecting to an existing tube ring.
