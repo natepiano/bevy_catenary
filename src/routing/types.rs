@@ -5,6 +5,7 @@
 
 use bevy::math::Quat;
 use bevy::math::Vec3;
+use bevy::reflect::Reflect;
 
 /// Where a cable connects to an object.
 #[derive(Clone, Copy, Debug)]
@@ -35,7 +36,7 @@ impl Anchor {
 }
 
 /// An axis-aligned bounding box with a world transform, used as a routing obstacle.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Reflect)]
 pub struct Obstacle {
     /// Half-extents of the AABB in local space.
     pub half_extents: Vec3,

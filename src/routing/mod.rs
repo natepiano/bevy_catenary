@@ -5,6 +5,7 @@
 
 mod catenary;
 mod constants;
+mod enums;
 mod orthogonal;
 mod pathfinding;
 mod solver;
@@ -21,6 +22,10 @@ pub use catenary::solve_parameter;
 pub use constants::DEFAULT_GRAVITY;
 pub use constants::DEFAULT_RESOLUTION;
 pub use constants::DEFAULT_SLACK;
+// Solver enums
+pub use enums::Curve;
+pub use enums::Planner;
+pub use enums::Solver;
 pub use orthogonal::OrthogonalPlanner;
 pub use pathfinding::AStarPlanner;
 // Traits

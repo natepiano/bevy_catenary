@@ -1,0 +1,110 @@
+//! Enum-based solver selection for cables.
+//!
+//! Replaces `Box<dyn RouteSolver>` with concrete enums that support `Clone`, `Reflect`,
+//! and avoid heap allocation. The existing traits remain as internal implementation details.
+
+use bevy::math::Vec3;
+use bevy::reflect::Reflect;
+
+use super::catenary::CatenarySolver;
+use super::constants::DEFAULT_RESOLUTION;
+use super::orthogonal::OrthogonalPlanner;
+use super::pathfinding::AStarPlanner;
+use super::solver::CurveSolver;
+use super::solver::DirectPlanner;
+use super::solver::LinearSolver;
+use super::solver::PathPlanner;
+use super::solver::RouteSolver;
+use super::types::CableGeometry;
+use super::types::CableSegment;
+use super::types::RouteRequest;
+
+/// Top-level solver selection for a cable.
+#[derive(Clone, Debug, Reflect)]
+pub enum Solver {
+    /// Direct catenary curve between endpoints.
+    Catenary(CatenarySolver),
+    /// Straight line between endpoints.
+    Linear,
+    /// Path planner + curve solver composition.
+    Routed {
+        /// How to find waypoints around obstacles.
+        planner:    Planner,
+        /// How to generate curves between waypoints.
+        curve:      Curve,
+        /// Sample resolution per segment (0 = use solver default).
+        resolution: u32,
+    },
+}
+
+/// Path planning strategy (finds waypoints around obstacles).
+#[derive(Clone, Debug, Reflect)]
+pub enum Planner {
+    /// No obstacle avoidance — direct path.
+    Direct,
+    /// Orthogonal (right-angle) routing.
+    Orthogonal,
+    /// A* grid-based pathfinding.
+    AStar,
+}
+
+/// Curve generation strategy (fills between waypoints).
+#[derive(Clone, Debug, Reflect)]
+pub enum Curve {
+    /// Catenary (hanging cable) curve.
+    Catenary(CatenarySolver),
+    /// Straight line segment.
+    Linear,
+}
+
+impl Solver {
+    /// Dispatch to the underlying solver implementation.
+    pub fn solve(&self, request: &RouteRequest) -> CableGeometry {
+        match self {
+            Solver::Catenary(catenary) => catenary.solve(request),
+            Solver::Linear => LinearSolver.solve(request),
+            Solver::Routed {
+                planner,
+                curve,
+                resolution,
+            } => {
+                let waypoints = planner.plan(request.start, request.end, request.obstacles);
+                let res = if request.resolution > 0 {
+                    request.resolution
+                } else if *resolution > 0 {
+                    *resolution
+                } else {
+                    DEFAULT_RESOLUTION
+                };
+
+                let segments: Vec<CableSegment> = waypoints
+                    .windows(2)
+                    .map(|pair| curve.solve_segment(pair[0], pair[1], res))
+                    .collect();
+
+                CableGeometry::from_segments(segments, waypoints)
+            },
+        }
+    }
+}
+
+impl Planner {
+    /// Find waypoints from `start` to `end`, routing around `obstacles`.
+    fn plan(&self, start: Vec3, end: Vec3, obstacles: &[super::types::Obstacle]) -> Vec<Vec3> {
+        match self {
+            Planner::Direct => DirectPlanner.plan(start, end, obstacles),
+            Planner::Orthogonal => OrthogonalPlanner::new().plan(start, end, obstacles),
+            Planner::AStar => AStarPlanner::new().plan(start, end, obstacles),
+        }
+    }
+}
+
+impl Curve {
+    /// Generate a curve segment between two waypoints.
+    fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment {
+        match self {
+            Curve::Catenary(catenary) => catenary.solve_segment(start, end, resolution),
+            Curve::Linear => LinearSolver.solve_segment(start, end, resolution),
+        }
+    }
+}

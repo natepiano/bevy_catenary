@@ -12,6 +12,7 @@
 //! 4. Map sampled points back to 3D
 
 use bevy::math::Vec3;
+use bevy::reflect::Reflect;
 
 use super::constants::DEFAULT_GRAVITY;
 use super::constants::DEFAULT_RESOLUTION;
@@ -245,7 +246,7 @@ fn sample_parabolic_fallback(
 ///
 /// Implements both [`CurveSolver`] (for use with [`Router`]) and [`RouteSolver`]
 /// (for standalone use without obstacle avoidance).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Reflect)]
 pub struct CatenarySolver {
     /// Cable length / straight-line distance. Values > 1.0 add sag.
     pub slack:      f32,

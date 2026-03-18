@@ -3,24 +3,85 @@
 use bevy::prelude::*;
 
 use super::CableGizmoGroup;
+use super::components::AttachedTo;
 use super::components::Cable;
+use super::components::CableEnd;
+use super::components::CableEndpoint;
 use super::components::ComputedCableGeometry;
+use super::components::DetachPolicy;
 use crate::routing::RouteRequest;
 
-/// Computes cable routes when a `Cable` component changes.
+/// Minimum distance between endpoints before route computation is skipped.
+const MIN_CABLE_LENGTH: f32 = 0.001;
+
+/// Computes cable routes reactively when endpoints or targets change.
+///
+/// Triggers on:
+/// - `Cable` component changes (solver, obstacles, resolution)
+/// - `CableEndpoint` component changes (offset, cap style)
+/// - Attached target entity's `GlobalTransform` changes
 pub fn compute_cable_routes(
-    mut cables: Query<(&Cable, &mut ComputedCableGeometry), Changed<Cable>>,
+    mut cables: Query<(Ref<Cable>, &mut ComputedCableGeometry, &Children)>,
+    endpoints: Query<(Ref<CableEndpoint>, Option<&AttachedTo>)>,
+    transforms: Query<&GlobalTransform>,
+    changed_transforms: Query<(), Changed<GlobalTransform>>,
 ) {
-    for (cable, mut computed) in &mut cables {
+    for (cable, mut computed, children) in &mut cables {
+        let mut needs_update = cable.is_changed();
+        let mut start_pos = None;
+        let mut end_pos = None;
+
+        for child in children.iter() {
+            let Ok((endpoint, attached_to)) = endpoints.get(child) else {
+                continue;
+            };
+
+            if endpoint.is_changed() {
+                needs_update = true;
+            }
+
+            let pos = if let Some(attached) = attached_to {
+                if let Ok(target_tf) = transforms.get(attached.0) {
+                    if changed_transforms.get(attached.0).is_ok() {
+                        needs_update = true;
+                    }
+                    target_tf.transform_point(endpoint.offset)
+                } else {
+                    // Target despawned — fall back to raw offset
+                    endpoint.offset
+                }
+            } else {
+                // World-attached — offset IS the world position
+                endpoint.offset
+            };
+
+            match endpoint.end {
+                CableEnd::Start => start_pos = Some(pos),
+                CableEnd::End => end_pos = Some(pos),
+            }
+        }
+
+        if !needs_update {
+            continue;
+        }
+
+        let (Some(start), Some(end)) = (start_pos, end_pos) else {
+            continue;
+        };
+
+        // Guard: skip degenerate zero-length cables
+        if start.distance(end) < MIN_CABLE_LENGTH {
+            continue;
+        }
+
         let request = RouteRequest {
-            start:      cable.start,
-            end:        cable.end,
-            obstacles:  &cable.obstacles,
+            start,
+            end,
+            obstacles: &cable.obstacles,
             resolution: cable.resolution,
         };
 
-        let geometry = cable.solver.solve(&request);
-        computed.geometry = Some(geometry);
+        computed.geometry = Some(cable.solver.solve(&request));
     }
 }
 
@@ -119,4 +180,34 @@ pub struct CableDebugEnabled(pub bool);
 
 impl Default for CableDebugEnabled {
     fn default() -> Self { Self(false) }
+}
+
+/// Observer that handles endpoint detachment when a target entity is despawned.
+///
+/// Bevy auto-removes `AttachedTo` when the target entity is despawned, which
+/// triggers `OnRemove<AttachedTo>`. This observer reads the endpoint's
+/// [`DetachPolicy`] and acts accordingly.
+pub fn on_endpoint_detached(
+    trigger: On<Remove, AttachedTo>,
+    mut endpoints: Query<(&mut CableEndpoint, &ChildOf)>,
+    mut commands: Commands,
+) {
+    let endpoint_entity = trigger.event_target();
+    let Ok((endpoint, child_of)) = endpoints.get_mut(endpoint_entity) else {
+        return;
+    };
+
+    match endpoint.detach_policy {
+        DetachPolicy::HangInPlace | DetachPolicy::HangLoose => {
+            // HangLoose falls back to HangInPlace for now.
+            // The offset is already a world position for world-attached endpoints.
+            // For entity-attached, we'd ideally store the last resolved world pos,
+            // but since the target is being despawned, the offset stays as-is.
+            // The cable will keep its last computed geometry.
+        },
+        DetachPolicy::Despawn => {
+            let cable_entity = child_of.parent();
+            commands.entity(cable_entity).despawn();
+        },
+    }
 }

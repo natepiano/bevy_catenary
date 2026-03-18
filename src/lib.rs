@@ -22,28 +22,36 @@
 //!     .run();
 //!
 //! fn setup(mut commands: Commands) {
-//!     commands.spawn(Cable {
-//!         start: Vec3::new(-2.0, 2.0, 0.0),
-//!         end: Vec3::new(2.0, 2.0, 0.0),
-//!         solver: Box::new(CatenarySolver::new().with_slack(1.3)),
-//!         obstacles: vec![],
-//!         resolution: 0,
-//!     });
+//!     commands
+//!         .spawn(Cable {
+//!             solver: Solver::Catenary(CatenarySolver::new().with_slack(1.3)),
+//!             obstacles: vec![],
+//!             resolution: 0,
+//!         })
+//!         .with_children(|parent| {
+//!             parent.spawn(CableEndpoint::new(CableEnd::Start, Vec3::new(-2.0, 2.0, 0.0)));
+//!             parent.spawn(CableEndpoint::new(CableEnd::End, Vec3::new(2.0, 2.0, 0.0)));
+//!         });
 //! }
 //! ```
 
 mod plugin;
 mod routing;
 
-// Routing types
 // Bevy plugin
+pub use plugin::AttachedEndpoints;
+pub use plugin::AttachedTo;
 pub use plugin::Cable;
 pub use plugin::CableDebugEnabled;
+pub use plugin::CableEnd;
+pub use plugin::CableEndpoint;
 pub use plugin::CableGizmoGroup;
 pub use plugin::CapStyle;
 pub use plugin::CatenaryPlugin;
 pub use plugin::ComputedCableGeometry;
+pub use plugin::DetachPolicy;
 pub use plugin::ElbowMetadata;
+pub use plugin::FaceSides;
 pub use plugin::TubeMeshConfig;
 pub use plugin::compute_elbow_metadata;
 pub use plugin::generate_tube_mesh;
@@ -53,6 +61,8 @@ pub use routing::Anchor;
 pub use routing::CableGeometry;
 pub use routing::CableSegment;
 pub use routing::CatenarySolver;
+// Solver enums
+pub use routing::Curve;
 // Routing traits
 pub use routing::CurveSolver;
 // Constants
@@ -64,9 +74,11 @@ pub use routing::LinearSolver;
 pub use routing::Obstacle;
 pub use routing::OrthogonalPlanner;
 pub use routing::PathPlanner;
+pub use routing::Planner;
 pub use routing::RouteRequest;
 pub use routing::RouteSolver;
 pub use routing::Router;
+pub use routing::Solver;
 // Standalone catenary math
 pub use routing::evaluate;
 pub use routing::sample_3d;

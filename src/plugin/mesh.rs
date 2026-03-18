@@ -43,15 +43,46 @@ fn push_quad(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, d: u32, flip: bool)
 }
 
 /// How to cap each end of a tube mesh.
-#[derive(Clone, Debug, Default)]
+///
+/// Surface normal is only relevant for [`CapStyle::Flat`] caps and is encoded directly
+/// in the variant — invalid states (normal on a [`CapStyle::Round`] cap) are unrepresentable.
+#[derive(Clone, Debug, Default, Reflect)]
 pub enum CapStyle {
-    /// Open end — no cap geometry.
-    #[default]
+    /// Open end — no cap geometry. Used internally for shared hub junctions.
     None,
     /// Hemisphere cap (smooth rounded end).
+    #[default]
     Round,
-    /// Flat disc cap (flush against a surface).
-    Flat,
+    /// Flat disc cap. `normal` determines orientation.
+    /// `None` uses the cable's tangent direction.
+    Flat {
+        /// Cap orientation normal. `None` = use cable tangent.
+        normal: Option<Vec3>,
+    },
+}
+
+impl CapStyle {
+    /// Flat cap using the cable's tangent direction.
+    pub fn flat() -> Self { Self::Flat { normal: None } }
+
+    /// Flat cap with an explicit orientation normal.
+    pub fn flat_with_normal(normal: Vec3) -> Self {
+        Self::Flat {
+            normal: Some(normal),
+        }
+    }
+}
+
+/// Which sides of the tube surface to render.
+#[derive(Clone, Debug, Default, Reflect)]
+pub enum FaceSides {
+    /// Render only the outside (default — backface culling hides interior).
+    #[default]
+    Outside,
+    /// Render only the inside (useful for tunnels viewed from within).
+    Inside,
+    /// Render both sides (outside + interior faces).
+    Both,
 }
 
 /// Configuration for tube mesh generation.
@@ -80,6 +111,8 @@ pub struct TubeMeshConfig {
     /// Multiplier for Bézier arm length at elbows (default 1.0).
     /// Controls how far P1/P2 extend from P0/P3: `arm = (distance / 3.0) * multiplier`.
     pub elbow_arm_multiplier:         f32,
+    /// Which sides of the tube surface to render.
+    pub face_sides:                   FaceSides,
     /// Per-elbow arm overrides as `(p1_arm, p2_arm)` distances.
     /// When set, each elbow uses its own independent arm lengths instead of the global
     /// `elbow_arm_multiplier`. `None` = use the global multiplier for all elbows.
@@ -101,6 +134,7 @@ impl Default for TubeMeshConfig {
             elbow_angle_threshold_deg:    25.0,
             elbow_arm_multiplier:         DEFAULT_ARM_MULTIPLIER,
             elbow_arm_overrides:          None,
+            face_sides:                   FaceSides::default(),
         }
     }
 }
@@ -203,7 +237,14 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
                 let c = next_base + j;
                 let d = next_base + j_next;
 
-                push_quad(&mut indices, a, b, c, d, false);
+                match config.face_sides {
+                    FaceSides::Outside => push_quad(&mut indices, a, b, c, d, false),
+                    FaceSides::Inside => push_quad(&mut indices, a, b, c, d, true),
+                    FaceSides::Both => {
+                        push_quad(&mut indices, a, b, c, d, false);
+                        push_quad(&mut indices, a, b, c, d, true);
+                    },
+                }
             }
         }
     }
@@ -231,10 +272,11 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
                     &mut indices,
                 );
             },
-            CapStyle::Flat => {
+            CapStyle::Flat { ref normal } => {
+                let dir = normal.unwrap_or(-all_tangents[0]);
                 add_flat_cap(
                     &all_points[0],
-                    &(-all_tangents[0]),
+                    &dir,
                     0,
                     sides,
                     true,
@@ -268,10 +310,11 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
                     &mut indices,
                 );
             },
-            CapStyle::Flat => {
+            CapStyle::Flat { ref normal } => {
+                let dir = normal.unwrap_or(all_tangents[last]);
                 add_flat_cap(
                     &all_points[last],
-                    &all_tangents[last],
+                    &dir,
                     last_ring_base,
                     sides,
                     false,
