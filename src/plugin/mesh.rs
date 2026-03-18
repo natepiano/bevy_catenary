@@ -21,6 +21,39 @@ const KNEE_RINGS_PER_RIGHT_ANGLE: u32 = 32;
 /// Default arm multiplier for Bézier control points (used in `TubeMeshConfig::default`).
 const DEFAULT_ARM_MULTIPLIER: f32 = 1.0;
 
+/// Push a triangle with correct winding. When `flip` is true, the winding is reversed
+/// so that the face normal points the opposite direction.
+fn push_tri(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, flip: bool) {
+    if flip {
+        indices.push(a);
+        indices.push(c);
+        indices.push(b);
+    } else {
+        indices.push(a);
+        indices.push(b);
+        indices.push(c);
+    }
+}
+
+/// Push a quad (two triangles) between two ring edges. When `flip` is true,
+/// the winding is reversed so that face normals point the opposite direction.
+fn push_quad(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, d: u32, flip: bool) {
+    push_tri(indices, a, b, c, flip);
+    push_tri(indices, b, d, c, flip);
+}
+
+/// How to cap each end of a tube mesh.
+#[derive(Clone, Debug, Default)]
+pub enum CapStyle {
+    /// Open end — no cap geometry.
+    #[default]
+    None,
+    /// Hemisphere cap (smooth rounded end).
+    Round,
+    /// Flat disc cap (flush against a surface).
+    Flat,
+}
+
 /// Configuration for tube mesh generation.
 #[derive(Clone, Debug)]
 pub struct TubeMeshConfig {
@@ -28,10 +61,10 @@ pub struct TubeMeshConfig {
     pub radius:                       f32,
     /// Number of vertices around the cross-section circle.
     pub sides:                        u32,
-    /// Whether to cap the start end with a hemisphere.
-    pub cap_start:                    bool,
-    /// Whether to cap the end with a hemisphere.
-    pub cap_end:                      bool,
+    /// Cap style for the start end of the tube.
+    pub cap_start:                    CapStyle,
+    /// Cap style for the end of the tube.
+    pub cap_end:                      CapStyle,
     /// Distance to trim from the start (tube begins this far along the path).
     pub trim_start:                   f32,
     /// Distance to trim from the end (tube ends this far before the path end).
@@ -58,8 +91,8 @@ impl Default for TubeMeshConfig {
         Self {
             radius:                       0.02,
             sides:                        8,
-            cap_start:                    true,
-            cap_end:                      true,
+            cap_start:                    CapStyle::Round,
+            cap_end:                      CapStyle::Round,
             trim_start:                   0.0,
             trim_end:                     0.0,
             elbow_bend_radius_multiplier: ELBOW_BEND_RADIUS_MULTIPLIER,
@@ -170,57 +203,86 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
                 let c = next_base + j;
                 let d = next_base + j_next;
 
-                // CCW winding for outward-facing normals
-                indices.push(a);
-                indices.push(b);
-                indices.push(c);
-
-                indices.push(b);
-                indices.push(d);
-                indices.push(c);
+                push_quad(&mut indices, a, b, c, d, false);
             }
         }
     }
 
-    // Add hemisphere caps at ends (only if configured)
-    let cap_rings = (sides / 2).max(4);
+    // Add caps at ends
+    let cap_rings = sides.max(8);
 
-    if point_count >= 2 && config.cap_start {
-        let (start_normal, start_binormal) = frames[0];
-        add_hemisphere_cap(
-            &all_points[0],
-            &(-all_tangents[0]),
-            &start_normal,
-            &start_binormal,
-            config.radius,
-            sides,
-            cap_rings,
-            0,
-            &mut positions,
-            &mut normals,
-            &mut uvs,
-            &mut indices,
-        );
-    }
+    if point_count >= 2 {
+        match config.cap_start {
+            CapStyle::Round => {
+                let (start_normal, start_binormal) = frames[0];
+                add_hemisphere_cap(
+                    &all_points[0],
+                    &(-all_tangents[0]),
+                    &start_normal,
+                    &start_binormal,
+                    config.radius,
+                    sides,
+                    cap_rings,
+                    0,
+                    true,
+                    &mut positions,
+                    &mut normals,
+                    &mut uvs,
+                    &mut indices,
+                );
+            },
+            CapStyle::Flat => {
+                add_flat_cap(
+                    &all_points[0],
+                    &(-all_tangents[0]),
+                    0,
+                    sides,
+                    true,
+                    &mut positions,
+                    &mut normals,
+                    &mut uvs,
+                    &mut indices,
+                );
+            },
+            CapStyle::None => {},
+        }
 
-    if point_count >= 2 && config.cap_end {
         let last = point_count - 1;
         let last_ring_base = (last * sides as usize) as u32;
-        let (end_normal, end_binormal) = frames[last];
-        add_hemisphere_cap(
-            &all_points[last],
-            &all_tangents[last],
-            &end_normal,
-            &end_binormal,
-            config.radius,
-            sides,
-            cap_rings,
-            last_ring_base,
-            &mut positions,
-            &mut normals,
-            &mut uvs,
-            &mut indices,
-        );
+        match config.cap_end {
+            CapStyle::Round => {
+                let (end_normal, end_binormal) = frames[last];
+                add_hemisphere_cap(
+                    &all_points[last],
+                    &all_tangents[last],
+                    &end_normal,
+                    &end_binormal,
+                    config.radius,
+                    sides,
+                    cap_rings,
+                    last_ring_base,
+                    false,
+                    &mut positions,
+                    &mut normals,
+                    &mut uvs,
+                    &mut indices,
+                );
+            },
+            CapStyle::Flat => {
+                add_flat_cap(
+                    &all_points[last],
+                    &all_tangents[last],
+                    last_ring_base,
+                    sides,
+                    false,
+                    &mut positions,
+                    &mut normals,
+                    &mut uvs,
+                    &mut indices,
+                );
+            },
+            CapStyle::None => {},
+        }
     }
 
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
@@ -628,6 +690,7 @@ fn add_hemisphere_cap(
     sides: u32,
     cap_rings: u32,
     equator_ring_base: u32,
+    flip_winding: bool,
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     uvs: &mut Vec<[f32; 2]>,
@@ -665,13 +728,7 @@ fn add_hemisphere_cap(
             let c = new_ring_base + j;
             let d = new_ring_base + j_next;
 
-            indices.push(a);
-            indices.push(b);
-            indices.push(c);
-
-            indices.push(b);
-            indices.push(d);
-            indices.push(c);
+            push_quad(indices, a, b, c, d, flip_winding);
         }
 
         prev_ring_base = new_ring_base;
@@ -687,9 +744,47 @@ fn add_hemisphere_cap(
     // Fan from last ring to pole
     for j in 0..sides {
         let j_next = (j + 1) % sides;
-        indices.push(prev_ring_base + j);
-        indices.push(prev_ring_base + j_next);
-        indices.push(pole_idx);
+        push_tri(
+            indices,
+            prev_ring_base + j,
+            prev_ring_base + j_next,
+            pole_idx,
+            flip_winding,
+        );
+    }
+}
+
+/// Adds a flat disc cap to the mesh, connecting to an existing tube ring.
+///
+/// The disc is perpendicular to the tube tangent at the endpoint.
+/// A center vertex is added and a triangle fan connects it to the ring.
+fn add_flat_cap(
+    center: &Vec3,
+    cap_direction: &Vec3,
+    ring_base: u32,
+    sides: u32,
+    flip_winding: bool,
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+) {
+    // Center vertex at the tube endpoint, normal facing outward along cap direction
+    let center_idx = positions.len() as u32;
+    positions.push(center.to_array());
+    normals.push(cap_direction.to_array());
+    uvs.push([0.5, 0.5]);
+
+    // Triangle fan from ring to center
+    for j in 0..sides {
+        let j_next = (j + 1) % sides;
+        push_tri(
+            indices,
+            ring_base + j,
+            ring_base + j_next,
+            center_idx,
+            flip_winding,
+        );
     }
 }
 

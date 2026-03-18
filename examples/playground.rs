@@ -22,6 +22,7 @@ use bevy_brp_extras::BrpExtrasPlugin;
 use bevy_catenary::AStarPlanner;
 use bevy_catenary::Cable;
 use bevy_catenary::CableDebugEnabled;
+use bevy_catenary::CapStyle;
 use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::ComputedCableGeometry;
@@ -106,7 +107,7 @@ const CABLE_COLOR: Color = Color::srgb(0.9, 0.5, 0.1);
 const OBSTACLE_COLOR: Color = Color::srgba(0.8, 0.2, 0.2, 0.25);
 
 // Node colors
-const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.8);
+const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.4);
 
 // Label height above nodes
 const LABEL_Y_OFFSET: f32 = 0.8;
@@ -181,6 +182,10 @@ impl Default for CableTuneSettings {
 #[derive(Component)]
 struct HubSphere;
 
+/// Marker for node endpoint cubes.
+#[derive(Component)]
+struct NodeCube;
+
 /// When true, the inspector panel is visible.
 #[derive(Resource)]
 struct InspectorVisible(bool);
@@ -198,7 +203,7 @@ fn main() {
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Cable Playground".into(),
+                    title: "Playground".into(),
                     ..default()
                 }),
                 ..default()
@@ -255,7 +260,7 @@ fn setup_camera(mut commands: Commands) {
             ..default()
         })
         .with_child(SpotLight {
-            intensity: 500_000.0,
+            intensity: 50_000.0,
             range: 100.0,
             outer_angle: 0.8,
             inner_angle: 0.6,
@@ -462,6 +467,7 @@ fn spawn_node_pair(
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material.clone()),
                 Transform::from_translation(pos),
+                NodeCube,
             ))
             .observe(on_mesh_clicked);
     }
@@ -595,7 +601,8 @@ fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
              Click ground - Zoom back to scene\n\
              D - Toggle debug gizmos\n\
              H - Zoom to fit entire scene\n\
-             I - Toggle inspector",
+             I - Toggle inspector\n\
+             N - Toggle node cubes",
         ),
         TextFont {
             font_size: UI_FONT_SIZE,
@@ -662,8 +669,16 @@ fn generate_cable_meshes(
         let config = TubeMeshConfig {
             radius:                       settings.tube_radius,
             sides:                        settings.tube_sides,
-            cap_start:                    !start_shared,
-            cap_end:                      !end_shared,
+            cap_start:                    if start_shared {
+                CapStyle::None
+            } else {
+                CapStyle::Round
+            },
+            cap_end:                      if end_shared {
+                CapStyle::None
+            } else {
+                CapStyle::Round
+            },
             trim_start:                   if start_shared { trim_distance } else { 0.0 },
             trim_end:                     if end_shared { trim_distance } else { 0.0 },
             elbow_bend_radius_multiplier: settings.elbow_bend_radius_multiplier,
@@ -734,6 +749,7 @@ fn handle_keyboard(
     mut debug_enabled: ResMut<CableDebugEnabled>,
     mut inspector_visible: ResMut<InspectorVisible>,
     scene: Res<SceneEntities>,
+    mut node_cubes: Query<&mut Visibility, With<NodeCube>>,
 ) {
     if keyboard.just_pressed(KeyCode::KeyD) {
         debug_enabled.0 = !debug_enabled.0;
@@ -741,6 +757,16 @@ fn handle_keyboard(
 
     if keyboard.just_pressed(KeyCode::KeyI) {
         inspector_visible.0 = !inspector_visible.0;
+    }
+
+    // N: Toggle node endpoint cubes
+    if keyboard.just_pressed(KeyCode::KeyN) {
+        for mut vis in &mut node_cubes {
+            *vis = match *vis {
+                Visibility::Hidden => Visibility::Inherited,
+                _ => Visibility::Hidden,
+            };
+        }
     }
 
     if keyboard.just_pressed(KeyCode::KeyH) {

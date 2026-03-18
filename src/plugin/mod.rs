@@ -10,6 +10,7 @@ mod systems;
 use bevy::prelude::*;
 pub use components::Cable;
 pub use components::ComputedCableGeometry;
+pub use mesh::CapStyle;
 pub use mesh::ElbowMetadata;
 pub use mesh::TubeMeshConfig;
 pub use mesh::compute_elbow_metadata;

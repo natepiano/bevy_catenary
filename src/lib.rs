@@ -40,6 +40,7 @@ mod routing;
 pub use plugin::Cable;
 pub use plugin::CableDebugEnabled;
 pub use plugin::CableGizmoGroup;
+pub use plugin::CapStyle;
 pub use plugin::CatenaryPlugin;
 pub use plugin::ComputedCableGeometry;
 pub use plugin::ElbowMetadata;
