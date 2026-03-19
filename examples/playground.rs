@@ -32,6 +32,7 @@ use bevy_catenary::Cable;
 use bevy_catenary::CableDebugEnabled;
 use bevy_catenary::CableEnd;
 use bevy_catenary::CableEndpoint;
+use bevy_catenary::CableMeshConfig;
 use bevy_catenary::CapStyle;
 use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
@@ -41,7 +42,6 @@ use bevy_catenary::DetachPolicy;
 use bevy_catenary::Obstacle;
 use bevy_catenary::Planner;
 use bevy_catenary::Solver;
-use bevy_catenary::TubeMeshConfig;
 use bevy_catenary::generate_tube_mesh;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
@@ -1330,7 +1330,7 @@ fn generate_cable_meshes(
             .unwrap_or(0)
             > 1;
 
-        let config = TubeMeshConfig {
+        let config = CableMeshConfig {
             radius:                       if is_inside_view {
                 1.5
             } else {
@@ -1360,6 +1360,7 @@ fn generate_cable_meshes(
             } else {
                 bevy_catenary::FaceSides::default()
             },
+            material:                     Some(cable_material.0.clone()),
         };
 
         let mesh = generate_tube_mesh(geometry, &config);

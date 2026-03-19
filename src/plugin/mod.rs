@@ -15,15 +15,18 @@ pub use components::CableEnd;
 pub use components::CableEndpoint;
 pub use components::ComputedCableGeometry;
 pub use components::DetachPolicy;
+pub use mesh::CableMeshConfig;
 pub use mesh::CapStyle;
 pub use mesh::ElbowMetadata;
 pub use mesh::FaceSides;
-pub use mesh::TubeMeshConfig;
 pub use mesh::compute_elbow_metadata;
 pub use mesh::generate_tube_mesh;
 pub use systems::CableDebugEnabled;
+pub use systems::CableMeshChild;
+pub use systems::CableMeshHandle;
 use systems::compute_cable_routes;
 use systems::on_endpoint_detached;
+use systems::on_geometry_computed;
 use systems::render_cable_gizmos;
 use systems::render_debug_gizmos;
 
@@ -55,6 +58,7 @@ impl Plugin for CatenaryPlugin {
                 )
                     .chain(),
             )
-            .add_observer(on_endpoint_detached);
+            .add_observer(on_endpoint_detached)
+            .add_observer(on_geometry_computed);
     }
 }

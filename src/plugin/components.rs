@@ -2,7 +2,8 @@
 
 use bevy::prelude::*;
 
-use crate::plugin::mesh::CapStyle;
+use super::mesh::CableMeshConfig;
+use super::mesh::CapStyle;
 use crate::routing::CableGeometry;
 use crate::routing::Obstacle;
 use crate::routing::Solver;
@@ -100,7 +101,7 @@ pub struct AttachedEndpoints(Vec<Entity>);
 /// The cable itself stores the solver, obstacles, and resolution. Endpoint positions
 /// come from child entities with [`CableEndpoint`] components.
 #[derive(Component, Clone, Debug, Reflect)]
-#[require(ComputedCableGeometry, Transform, Visibility)]
+#[require(ComputedCableGeometry, CableMeshConfig, Transform, Visibility)]
 pub struct Cable {
     /// The routing algorithm to use.
     pub solver:     Solver,

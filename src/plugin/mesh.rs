@@ -12,16 +12,16 @@ use bevy_kana::ToUsize;
 
 use crate::routing::CableGeometry;
 
-/// Default elbow bend radius multiplier (used in `TubeMeshConfig::default`).
+/// Default elbow bend radius multiplier (used in `CableMeshConfig::default`).
 const ELBOW_BEND_RADIUS_MULTIPLIER: f32 = 1.0;
 
-/// Default minimum elbow radius multiplier (used in `TubeMeshConfig::default`).
+/// Default minimum elbow radius multiplier (used in `CableMeshConfig::default`).
 const MIN_ELBOW_RADIUS_MULTIPLIER: f32 = 0.5;
 
-/// Default rings per 90 degrees of bend (used in `TubeMeshConfig::default`).
+/// Default rings per 90 degrees of bend (used in `CableMeshConfig::default`).
 const KNEE_RINGS_PER_RIGHT_ANGLE: u32 = 32;
 
-/// Default arm multiplier for Bézier control points (used in `TubeMeshConfig::default`).
+/// Default arm multiplier for Bézier control points (used in `CableMeshConfig::default`).
 const DEFAULT_ARM_MULTIPLIER: f32 = 1.0;
 
 /// Push a triangle with correct winding. When `flip` is true, the winding is reversed
@@ -57,7 +57,7 @@ struct MeshBuffers<'a> {
 
 /// Resolve elbow arm lengths from per-elbow overrides or the global multiplier.
 fn resolve_elbow_arms(
-    config: &TubeMeshConfig,
+    config: &CableMeshConfig,
     elbow_idx: usize,
     p0: Vec3,
     p3: Vec3,
@@ -121,9 +121,10 @@ pub enum FaceSides {
     Both,
 }
 
-/// Configuration for tube mesh generation.
-#[derive(Clone, Debug)]
-pub struct TubeMeshConfig {
+/// Configuration for cable mesh generation. Attach to a [`Cable`] entity to control
+/// how its tube mesh is rendered.
+#[derive(Component, Clone, Debug, Reflect)]
+pub struct CableMeshConfig {
     /// Radius of the tube cross-section.
     pub radius:                       f32,
     /// Number of vertices around the cross-section circle.
@@ -149,13 +150,15 @@ pub struct TubeMeshConfig {
     pub elbow_arm_multiplier:         f32,
     /// Which sides of the tube surface to render.
     pub face_sides:                   FaceSides,
+    /// Material to apply to the generated mesh. If `None`, no material is added.
+    pub material:                     Option<Handle<StandardMaterial>>,
     /// Per-elbow arm overrides as `(p1_arm, p2_arm)` distances.
     /// When set, each elbow uses its own independent arm lengths instead of the global
     /// `elbow_arm_multiplier`. `None` = use the global multiplier for all elbows.
     pub elbow_arm_overrides:          Option<Vec<(f32, f32)>>,
 }
 
-impl Default for TubeMeshConfig {
+impl Default for CableMeshConfig {
     fn default() -> Self {
         Self {
             radius:                       0.02,
@@ -171,6 +174,7 @@ impl Default for TubeMeshConfig {
             elbow_arm_multiplier:         DEFAULT_ARM_MULTIPLIER,
             elbow_arm_overrides:          None,
             face_sides:                   FaceSides::default(),
+            material:                     None,
         }
     }
 }
@@ -207,7 +211,7 @@ fn add_end_caps(
     all_points: &[Vec3],
     all_tangents: &[Vec3],
     frames: &[(Vec3, Vec3)],
-    config: &TubeMeshConfig,
+    config: &CableMeshConfig,
     sides: u32,
     point_count: usize,
     buffers: &mut MeshBuffers,
@@ -279,7 +283,7 @@ fn add_end_caps(
 /// All segments are flattened into a single continuous polyline,
 /// producing one seamless tube for the entire cable path.
 #[must_use]
-pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> Mesh {
+pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) -> Mesh {
     let sides = config.sides.max(3);
     let total_length = geometry.total_length.max(0.001);
 
@@ -477,7 +481,7 @@ fn trim_path(
 fn insert_knee_rings(
     points: Vec<Vec3>,
     arc_lengths: Vec<f32>,
-    config: &TubeMeshConfig,
+    config: &CableMeshConfig,
 ) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
     let point_count = points.len();
     if point_count < 2 {
@@ -680,7 +684,7 @@ pub struct ElbowMetadata {
 #[must_use]
 pub fn compute_elbow_metadata(
     geometry: &CableGeometry,
-    config: &TubeMeshConfig,
+    config: &CableMeshConfig,
 ) -> Vec<ElbowMetadata> {
     // Flatten geometry into a single polyline (same as generate_tube_mesh).
     let mut points: Vec<Vec3> = Vec::new();
