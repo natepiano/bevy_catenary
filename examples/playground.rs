@@ -23,8 +23,8 @@ use std::time::Duration;
 
 use bevy::light::NotShadowCaster;
 use bevy::math::curve::easing::EaseFunction;
-use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::picking::Pickable;
+use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::prelude::*;
 use bevy_brp_extras::BrpExtrasPlugin;
 use bevy_catenary::AttachedTo;
@@ -32,6 +32,7 @@ use bevy_catenary::Cable;
 use bevy_catenary::CableDebugEnabled;
 use bevy_catenary::CableEnd;
 use bevy_catenary::CableEndpoint;
+use bevy_catenary::CableMeshChild;
 use bevy_catenary::CableMeshConfig;
 use bevy_catenary::CapStyle;
 use bevy_catenary::CatenaryPlugin;
@@ -127,6 +128,7 @@ const NAV_FONT_SIZE: f32 = 16.0;
 #[derive(Resource)]
 struct SceneEntities {
     camera: Entity,
+    ground: Entity,
 }
 
 #[derive(Resource)]
@@ -255,7 +257,8 @@ fn main() {
         .add_systems(
             Update,
             (
-                frame_initial_section,
+                attach_click_to_cable_meshes,
+                update_current_section_from_camera,
                 handle_keyboard,
                 handle_nav_buttons,
                 handle_drag,
@@ -300,25 +303,10 @@ fn setup_camera(mut commands: Commands) {
         })
         .id();
 
-    commands.insert_resource(SceneEntities { camera });
-}
-
-/// Frame section 0 after transforms are propagated (skip frame 0, fire on frame 1).
-fn frame_initial_section(
-    mut commands: Commands,
-    scene: Res<SceneEntities>,
-    bounds: Res<SectionBounds>,
-    mut frame_count: Local<u32>,
-) {
-    *frame_count += 1;
-    if *frame_count == 2 {
-        commands.trigger(
-            ZoomToFit::new(scene.camera, bounds.0[0])
-                .margin(ZOOM_MARGIN_NAV)
-                .duration(Duration::from_millis(1))
-                .easing(EaseFunction::Linear),
-        );
-    }
+    commands.insert_resource(SceneEntities {
+        camera,
+        ground: Entity::PLACEHOLDER,
+    });
 }
 
 // ============================================================================
@@ -329,9 +317,10 @@ fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut scene: ResMut<SceneEntities>,
 ) {
     // Ground plane
-    commands
+    let ground = commands
         .spawn((
             Mesh3d(meshes.add(Plane3d::default().mesh().size(GROUND_WIDTH, GROUND_DEPTH))),
             MeshMaterial3d(materials.add(StandardMaterial {
@@ -342,7 +331,9 @@ fn setup_scene(
                 ..default()
             })),
         ))
-        .observe(on_ground_clicked);
+        .observe(on_ground_clicked)
+        .id();
+    scene.ground = ground;
 
     // Directional light
     commands.spawn((
@@ -900,10 +891,9 @@ fn spawn_keyboard_shortcuts(commands: &mut Commands, camera: Entity) {
     commands.spawn((
         Text::new(
             "D - Debug gizmos\n\
-             H - Home (full scene)\n\
+             F - Full scene\n\
              I - Inspector\n\
-             N - Toggle nodes\n\
-             R - Reset detach demo",
+             N - Toggle nodes",
         ),
         TextFont {
             font_size: UI_FONT_SIZE,
@@ -1332,6 +1322,50 @@ fn on_despawnable_clicked(click: On<Pointer<Click>>, mut commands: Commands) {
 // Runtime systems
 // ============================================================================
 
+/// Track which section the camera is nearest to and update the nav label.
+fn update_current_section_from_camera(
+    cameras: Query<&PanOrbitCamera>,
+    mut current: ResMut<CurrentSection>,
+    mut label_query: Query<&mut Text, With<NavLabel>>,
+) {
+    let Ok(cam) = cameras.single() else {
+        return;
+    };
+    let cam_x = cam.focus.x;
+    let nearest = SECTION_X
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| {
+            (cam_x - *a)
+                .abs()
+                .partial_cmp(&(cam_x - *b).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+
+    if nearest != current.0 {
+        current.0 = nearest;
+        for mut text in label_query.iter_mut() {
+            **text = format!(
+                "{} / {SECTION_COUNT} - {}",
+                nearest + 1,
+                SECTION_TITLES[nearest]
+            );
+        }
+    }
+}
+
+/// Attach click-to-zoom observer to cable mesh children spawned by the library.
+fn attach_click_to_cable_meshes(
+    mut commands: Commands,
+    new_cables: Query<&CableMeshChild, Added<CableMeshChild>>,
+) {
+    for mesh_child in &new_cables {
+        commands.entity(mesh_child.0).observe(on_mesh_clicked);
+    }
+}
+
 /// Sync `CableSettings` resource to each cable's `CableMeshConfig` when the inspector changes
 /// values.
 fn sync_cable_settings(
@@ -1364,6 +1398,7 @@ fn handle_keyboard(
     mut commands: Commands,
     mut debug_enabled: ResMut<CableDebugEnabled>,
     mut inspector_visible: ResMut<InspectorVisible>,
+    scene: Res<SceneEntities>,
     mut node_cubes: Query<&mut Visibility, With<NodeCube>>,
     // Reset detach demo
     shared_cable_mat: Res<SharedCableMaterial>,
@@ -1382,6 +1417,16 @@ fn handle_keyboard(
 
     if keyboard.just_pressed(KeyCode::KeyI) {
         inspector_visible.0 = !inspector_visible.0;
+    }
+
+    // F: Full scene — zoom out to see everything
+    if keyboard.just_pressed(KeyCode::KeyF) {
+        commands.trigger(
+            ZoomToFit::new(scene.camera, scene.ground)
+                .margin(0.05)
+                .duration(Duration::from_millis(NAV_DURATION_MS))
+                .easing(EaseFunction::CubicOut),
+        );
     }
 
     if keyboard.just_pressed(KeyCode::KeyN) {
