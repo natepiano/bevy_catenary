@@ -608,9 +608,9 @@ dependencies = [
 
 [[package]]
 name = "bevy_brp_extras"
-version = "0.18.7"
+version = "0.18.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b3552a5537d0e8c6f14474297e6307e13449a9b1e32ae4c5a657e20da51fd49"
+checksum = "a02ba4aae38b176a1e0d942ea8736cec6b9eadeb7a1c9479078a0bdc8ac1366e"
 dependencies = [
  "bevy",
  "bevy_remote",
@@ -655,6 +655,7 @@ dependencies = [
  "bevy",
  "bevy-inspector-egui",
  "bevy_brp_extras",
+ "bevy_kana",
  "bevy_panorbit_camera",
  "bevy_panorbit_camera_ext",
 ]
@@ -1112,6 +1113,13 @@ dependencies = [
  "bevy_utils",
  "bevy_window",
  "bevy_winit",
+]
+
+[[package]]
+name = "bevy_kana"
+version = "0.0.1"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]

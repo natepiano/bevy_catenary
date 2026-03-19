@@ -8,6 +8,8 @@
 //! [`Router`] composes a `PathPlanner` and `CurveSolver` into a `RouteSolver`.
 
 use bevy::math::Vec3;
+use bevy_kana::ToF32;
+use bevy_kana::ToUsize;
 
 use super::constants::DEFAULT_RESOLUTION;
 use super::types::CableGeometry;
@@ -54,11 +56,11 @@ pub struct LinearSolver;
 
 impl CurveSolver for LinearSolver {
     fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment {
-        let n = resolution.max(2) as usize;
+        let n = resolution.max(2).to_usize();
         let mut points = Vec::with_capacity(n);
 
         for i in 0..n {
-            let t = i as f32 / (n - 1) as f32;
+            let t = i.to_f32() / (n - 1).to_f32();
             points.push(start.lerp(end, t));
         }
 
@@ -95,7 +97,8 @@ impl Router {
     }
 
     /// Override the default sample resolution.
-    pub fn with_resolution(mut self, resolution: u32) -> Self {
+    #[must_use]
+    pub const fn with_resolution(mut self, resolution: u32) -> Self {
         self.resolution = resolution;
         self
     }

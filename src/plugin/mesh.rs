@@ -6,6 +6,9 @@
 use bevy::mesh::Indices;
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
+use bevy_kana::ToF32;
+use bevy_kana::ToU32;
+use bevy_kana::ToUsize;
 
 use crate::routing::CableGeometry;
 
@@ -63,10 +66,12 @@ pub enum CapStyle {
 
 impl CapStyle {
     /// Flat cap using the cable's tangent direction.
-    pub fn flat() -> Self { Self::Flat { normal: None } }
+    #[must_use]
+    pub const fn flat() -> Self { Self::Flat { normal: None } }
 
     /// Flat cap with an explicit orientation normal.
-    pub fn flat_with_normal(normal: Vec3) -> Self {
+    #[must_use]
+    pub const fn flat_with_normal(normal: Vec3) -> Self {
         Self::Flat {
             normal: Some(normal),
         }
@@ -197,9 +202,9 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
     // Compute rotation-minimizing frames along the entire path
     let frames = compute_rmf(&all_points, &all_tangents);
 
-    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(point_count * sides as usize);
-    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(point_count * sides as usize);
-    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(point_count * sides as usize);
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(point_count * sides.to_usize());
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(point_count * sides.to_usize());
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(point_count * sides.to_usize());
     let mut indices: Vec<u32> = Vec::new();
 
     for (i, ((point, _tangent), (frame_normal, binormal))) in all_points
@@ -208,11 +213,11 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
         .zip(&frames)
         .enumerate()
     {
-        let u = all_arc_lengths[i] / total_length;
+        let arc_u = all_arc_lengths[i] / total_length;
 
         // Generate cross-section ring
         for j in 0..sides {
-            let angle = (j as f32 / sides as f32) * std::f32::consts::TAU;
+            let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
             let (sin_a, cos_a) = angle.sin_cos();
 
             let offset = *frame_normal * cos_a * config.radius + *binormal * sin_a * config.radius;
@@ -221,28 +226,44 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
 
             positions.push(vertex_pos.to_array());
             normals.push(vertex_normal.to_array());
-            uvs.push([u, j as f32 / sides as f32]);
+            uvs.push([arc_u, j.to_f32() / sides.to_f32()]);
         }
 
         // Connect to previous ring with triangles
         if i > 0 {
-            let base = ((i - 1) * sides as usize) as u32;
-            let next_base = (i * sides as usize) as u32;
+            let base = ((i - 1) * sides.to_usize()).to_u32();
+            let next_base = (i * sides.to_usize()).to_u32();
 
             for j in 0..sides {
                 let j_next = (j + 1) % sides;
 
-                let a = base + j;
-                let b = base + j_next;
-                let c = next_base + j;
-                let d = next_base + j_next;
+                let curr_j = base + j;
+                let curr_j_next = base + j_next;
+                let next_j = next_base + j;
+                let next_j_next = next_base + j_next;
 
                 match config.face_sides {
-                    FaceSides::Outside => push_quad(&mut indices, a, b, c, d, false),
-                    FaceSides::Inside => push_quad(&mut indices, a, b, c, d, true),
+                    FaceSides::Outside => push_quad(
+                        &mut indices,
+                        curr_j,
+                        curr_j_next,
+                        next_j,
+                        next_j_next,
+                        false,
+                    ),
+                    FaceSides::Inside => {
+                        push_quad(&mut indices, curr_j, curr_j_next, next_j, next_j_next, true)
+                    },
                     FaceSides::Both => {
-                        push_quad(&mut indices, a, b, c, d, false);
-                        push_quad(&mut indices, a, b, c, d, true);
+                        push_quad(
+                            &mut indices,
+                            curr_j,
+                            curr_j_next,
+                            next_j,
+                            next_j_next,
+                            false,
+                        );
+                        push_quad(&mut indices, curr_j, curr_j_next, next_j, next_j_next, true);
                     },
                 }
             }
@@ -290,7 +311,7 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
         }
 
         let last = point_count - 1;
-        let last_ring_base = (last * sides as usize) as u32;
+        let last_ring_base = (last * sides.to_usize()).to_u32();
         match config.cap_end {
             CapStyle::Round => {
                 let (end_normal, end_binormal) = frames[last];
@@ -414,8 +435,8 @@ fn insert_knee_rings(
     arc_lengths: Vec<f32>,
     config: &TubeMeshConfig,
 ) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
-    let n = points.len();
-    if n < 2 {
+    let point_count = points.len();
+    if point_count < 2 {
         return (points, _tangents, arc_lengths);
     }
 
@@ -425,22 +446,22 @@ fn insert_knee_rings(
     let rings_per_right_angle = config.elbow_rings_per_right_angle;
     let min_bend_r = tube_radius * config.elbow_min_radius_multiplier;
 
-    let mut out_pts = Vec::with_capacity(n * 2);
-    let mut out_arc = Vec::with_capacity(n * 2);
+    let mut out_pts = Vec::with_capacity(point_count * 2);
+    let mut out_arc = Vec::with_capacity(point_count * 2);
 
     out_pts.push(points[0]);
     out_arc.push(arc_lengths[0]);
 
     let mut elbow_idx = 0_usize;
     let mut i = 1;
-    while i < n {
+    while i < point_count {
         // Use actual segment directions, not stored central-difference tangents.
         let dir_in = if i > 0 {
             (points[i] - points[i - 1]).normalize_or_zero()
         } else {
             Vec3::Z
         };
-        let dir_out = if i + 1 < n {
+        let dir_out = if i + 1 < point_count {
             (points[i + 1] - points[i]).normalize_or_zero()
         } else {
             // Last point — no outgoing segment, just pass through.
@@ -469,12 +490,12 @@ fn insert_knee_rings(
         }
 
         let half = theta * 0.5;
-        let d = bend_radius * half.tan();
-        let p = points[i];
+        let fillet_reach = bend_radius * half.tan();
+        let corner = points[i];
 
         // Fillet start/end computed from actual segment directions.
-        let fillet_start = p - dir_in * d;
-        let fillet_end = p + dir_out * d;
+        let fillet_start = corner - dir_in * fillet_reach;
+        let fillet_end = corner + dir_out * fillet_reach;
 
         // Remove output points that overlap with the fillet's backward reach.
         while out_pts.len() > 1 {
@@ -500,7 +521,7 @@ fn insert_knee_rings(
         // P3 = fillet_end,   tangent at end   = dir_out
         let p0 = fillet_start;
         let p3 = fillet_end;
-        let max_arm = d * 0.95;
+        let max_arm = fillet_reach * 0.95;
         let (p1_arm, p2_arm) = if let Some(ref overrides) = config.elbow_arm_overrides {
             if let Some(&(a1, a2)) = overrides.get(elbow_idx) {
                 (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm))
@@ -516,9 +537,10 @@ fn insert_knee_rings(
         let p2 = p3 - dir_out * p2_arm;
         elbow_idx += 1;
 
-        let num_rings = ((theta / std::f32::consts::FRAC_PI_2) * rings_per_right_angle as f32)
+        let num_rings = ((theta / std::f32::consts::FRAC_PI_2) * rings_per_right_angle.to_f32())
             .ceil()
-            .max(3.0) as u32;
+            .max(3.0)
+            .to_u32();
 
         let fillet_base_arc = *out_arc.last().unwrap();
 
@@ -527,7 +549,7 @@ fn insert_knee_rings(
         let fillet_len = p0.distance(q1) * 2.0 + q1.distance(p3) * 2.0;
 
         for k in 1..=num_rings {
-            let t = k as f32 / num_rings as f32;
+            let t = k.to_f32() / num_rings.to_f32();
             let omt = 1.0 - t;
 
             // Cubic Bézier: B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
@@ -544,7 +566,7 @@ fn insert_knee_rings(
 
         // Skip forward input points that overlap with the fillet's forward reach.
         i += 1;
-        while i < n {
+        while i < point_count {
             if (points[i] - fillet_end).dot(dir_out) < 0.0 {
                 i += 1;
             } else {
@@ -682,12 +704,12 @@ pub fn compute_elbow_metadata(
 
         let theta = cos_a.acos();
         let half = theta * 0.5;
-        let d = bend_radius * half.tan();
-        let p = points[i];
+        let fillet_reach = bend_radius * half.tan();
+        let corner = points[i];
 
-        let p0 = p - dir_in * d;
-        let p3 = p + dir_out * d;
-        let max_arm = d * 0.95;
+        let p0 = corner - dir_in * fillet_reach;
+        let p3 = corner + dir_out * fillet_reach;
+        let max_arm = fillet_reach * 0.95;
         let (p1_arm, p2_arm) = if let Some(ref overrides) = config.elbow_arm_overrides {
             if let Some(&(a1, a2)) = overrides.get(elbow_idx) {
                 (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm))
@@ -711,7 +733,7 @@ pub fn compute_elbow_metadata(
             dir_out,
             p1_arm,
             p2_arm,
-            d,
+            d: fillet_reach,
         });
         elbow_idx += 1;
     }
@@ -742,15 +764,15 @@ fn add_hemisphere_cap(
     let mut prev_ring_base = equator_ring_base;
 
     for k in 1..cap_rings {
-        let phi = (k as f32 / cap_rings as f32) * std::f32::consts::FRAC_PI_2;
+        let phi = (k.to_f32() / cap_rings.to_f32()) * std::f32::consts::FRAC_PI_2;
         let ring_radius = phi.cos() * radius;
         let along_offset = phi.sin() * radius;
         let ring_center = *center + *cap_direction * along_offset;
 
-        let new_ring_base = positions.len() as u32;
+        let new_ring_base = positions.len().to_u32();
 
         for j in 0..sides {
-            let angle = (j as f32 / sides as f32) * std::f32::consts::TAU;
+            let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
             let (sin_a, cos_a) = angle.sin_cos();
 
             let radial = *frame_normal * cos_a + *binormal * sin_a;
@@ -779,7 +801,7 @@ fn add_hemisphere_cap(
 
     // Pole vertex (tip of hemisphere)
     let pole_pos = *center + *cap_direction * radius;
-    let pole_idx = positions.len() as u32;
+    let pole_idx = positions.len().to_u32();
     positions.push(pole_pos.to_array());
     normals.push(cap_direction.to_array());
     uvs.push([0.5, 0.5]);
@@ -813,7 +835,7 @@ fn add_flat_cap(
     indices: &mut Vec<u32>,
 ) {
     // Center vertex at the tube endpoint, normal facing outward along cap direction
-    let center_idx = positions.len() as u32;
+    let center_idx = positions.len().to_u32();
     positions.push(center.to_array());
     normals.push(cap_direction.to_array());
     uvs.push([0.5, 0.5]);

@@ -36,6 +36,7 @@ pub struct CableEndpoint {
 
 impl CableEndpoint {
     /// Create a new endpoint with default cap style (`None`) and detach policy (`HangInPlace`).
+    #[must_use]
     pub fn new(end: CableEnd, offset: Vec3) -> Self {
         Self {
             end,
@@ -46,13 +47,15 @@ impl CableEndpoint {
     }
 
     /// Set the cap style for this endpoint.
-    pub fn with_cap(mut self, cap_style: CapStyle) -> Self {
+    #[must_use]
+    pub const fn with_cap(mut self, cap_style: CapStyle) -> Self {
         self.cap_style = cap_style;
         self
     }
 
     /// Set the detach policy for this endpoint.
-    pub fn with_detach_policy(mut self, policy: DetachPolicy) -> Self {
+    #[must_use]
+    pub const fn with_detach_policy(mut self, policy: DetachPolicy) -> Self {
         self.detach_policy = policy;
         self
     }

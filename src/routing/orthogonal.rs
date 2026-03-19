@@ -1,6 +1,7 @@
 //! Orthogonal routing — axis-aligned cable paths with 90-degree bends.
 
 use bevy::math::Vec3;
+use bevy_kana::ToF32;
 
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
 use super::solver::PathPlanner;
@@ -30,16 +31,19 @@ impl Default for OrthogonalPlanner {
 
 impl OrthogonalPlanner {
     /// Create an orthogonal planner with default settings.
+    #[must_use]
     pub fn new() -> Self { Self::default() }
 
     /// Set the obstacle clearance margin.
-    pub fn with_margin(mut self, margin: f32) -> Self {
+    #[must_use]
+    pub const fn with_margin(mut self, margin: f32) -> Self {
         self.margin = margin;
         self
     }
 
     /// Prefer vertical-first routing.
-    pub fn vertical_first(mut self) -> Self {
+    #[must_use]
+    pub const fn vertical_first(mut self) -> Self {
         self.vertical_first = true;
         self
     }
@@ -48,7 +52,7 @@ impl OrthogonalPlanner {
     fn is_segment_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
         let steps = 10;
         for i in 0..=steps {
-            let t = i as f32 / steps as f32;
+            let t = i.to_f32() / steps.to_f32();
             let point = start.lerp(end, t);
             if self.is_point_blocked(point, obstacles) {
                 return true;

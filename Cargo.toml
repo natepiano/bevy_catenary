@@ -1,12 +1,33 @@
 [package]
 authors     = ["natepiano"]
+categories  = ["game-development", "rendering"]
 description = "Physics-based 3D cable routing with catenary geometry and automatic pathfinding for Bevy"
 edition     = "2024"
 homepage    = "https://github.com/natepiano/bevy_catenary"
+keywords    = ["3d", "bevy", "cable", "catenary", "routing"]
 license     = "MIT OR Apache-2.0"
 name        = "bevy_catenary"
 repository  = "https://github.com/natepiano/bevy_catenary"
 version     = "0.1.0"
+
+[lints.clippy]
+# Our strict lints
+expect_used = "deny"
+panic       = "deny"
+unwrap_used = "deny"
+
+# Enable lint groups as errors (with lower priority so allows can override)
+all      = { level = "deny", priority = -1 }
+cargo    = { level = "deny", priority = -1 }
+nursery  = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+
+# Allow specific lints that conflict with common patterns
+multiple_crate_versions = "allow"
+needless_pass_by_value  = "allow"
+
+[lints.rust]
+missing_docs = "deny"
 
 [dependencies]
 bevy = { version = "0.18.1", default-features = false, features = [
@@ -16,6 +37,9 @@ bevy = { version = "0.18.1", default-features = false, features = [
   "bevy_pbr",
   "bevy_render",
 ] }
+bevy_kana = { path = "../bevy_kana", default-features = false, features = [
+  "math",
+] }
 
 [[example]]
 name = "playground"
@@ -23,7 +47,7 @@ name = "playground"
 [dev-dependencies]
 bevy = { version = "0.18.1", features = ["default"] }
 bevy-inspector-egui = "0.36.0"
-bevy_brp_extras = "0.18.7"
+bevy_brp_extras = "0.18.8"
 bevy_panorbit_camera = "0.34.0"
 bevy_panorbit_camera_ext = { path = "../bevy_panorbit_camera_ext", features = [
   "visualization",

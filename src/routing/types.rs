@@ -19,7 +19,8 @@ pub struct Anchor {
 
 impl Anchor {
     /// Create an anchor at a position with no preferred direction.
-    pub fn new(position: Vec3) -> Self {
+    #[must_use]
+    pub const fn new(position: Vec3) -> Self {
         Self {
             position,
             direction: None,
@@ -27,7 +28,8 @@ impl Anchor {
     }
 
     /// Create an anchor with a preferred exit direction.
-    pub fn with_direction(position: Vec3, direction: Vec3) -> Self {
+    #[must_use]
+    pub const fn with_direction(position: Vec3, direction: Vec3) -> Self {
         Self {
             position,
             direction: Some(direction),
@@ -48,7 +50,8 @@ pub struct Obstacle {
 
 impl Obstacle {
     /// Create an axis-aligned obstacle (no rotation).
-    pub fn new(half_extents: Vec3, position: Vec3) -> Self {
+    #[must_use]
+    pub const fn new(half_extents: Vec3, position: Vec3) -> Self {
         Self {
             half_extents,
             position,
@@ -57,7 +60,8 @@ impl Obstacle {
     }
 
     /// Create a rotated obstacle.
-    pub fn with_rotation(half_extents: Vec3, position: Vec3, rotation: Quat) -> Self {
+    #[must_use]
+    pub const fn with_rotation(half_extents: Vec3, position: Vec3, rotation: Quat) -> Self {
         Self {
             half_extents,
             position,
@@ -66,9 +70,11 @@ impl Obstacle {
     }
 
     /// World-space AABB minimum corner (ignoring rotation for axis-aligned tests).
+    #[must_use]
     pub fn aabb_min(&self) -> Vec3 { self.position - self.half_extents }
 
     /// World-space AABB maximum corner (ignoring rotation for axis-aligned tests).
+    #[must_use]
     pub fn aabb_max(&self) -> Vec3 { self.position + self.half_extents }
 }
 

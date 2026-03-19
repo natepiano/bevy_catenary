@@ -13,6 +13,8 @@
 
 use bevy::math::Vec3;
 use bevy::reflect::Reflect;
+use bevy_kana::ToF32;
+use bevy_kana::ToUsize;
 
 use super::constants::DEFAULT_GRAVITY;
 use super::constants::DEFAULT_RESOLUTION;
@@ -37,57 +39,57 @@ pub fn evaluate(x: f32, a: f32) -> f32 { a * (x / a).cosh() }
 ///
 /// Returns `None` if the problem is degenerate or Newton's method fails to converge.
 pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f32) -> Option<f32> {
-    let h = horizontal_dist.abs();
-    let v = vertical_dist;
-    let l = cable_length;
+    let horiz = horizontal_dist.abs();
+    let vert = vertical_dist;
+    let length = cable_length;
 
     // Cable must be longer than straight-line distance
-    let straight = (h * h + v * v).sqrt();
-    if l <= straight + MIN_SEGMENT_LENGTH {
+    let straight = (horiz * horiz + vert * vert).sqrt();
+    if length <= straight + MIN_SEGMENT_LENGTH {
         return None;
     }
 
     // If horizontal distance is near zero, degenerate to vertical hang
-    if h < MIN_SEGMENT_LENGTH {
+    if horiz < MIN_SEGMENT_LENGTH {
         return None;
     }
 
     // We need to solve: L^2 - v^2 = (2a * sinh(h / (2a)))^2
     // Let f(a) = 2a * sinh(h/(2a)) - sqrt(L^2 - v^2)
     // Newton: a_{n+1} = a_n - f(a_n) / f'(a_n)
-    let target = (l * l - v * v).sqrt();
+    let target = (length * length - vert * vert).sqrt();
 
-    // Initial guess: start with a = h (reasonable for moderate sag)
-    let mut a = h;
+    // Initial guess: start with a = horiz (reasonable for moderate sag)
+    let mut param = horiz;
 
     for _ in 0..MAX_NEWTON_ITERATIONS {
-        if a < MIN_CATENARY_PARAM {
-            a = MIN_CATENARY_PARAM;
+        if param < MIN_CATENARY_PARAM {
+            param = MIN_CATENARY_PARAM;
         }
 
-        let half_h_over_a = h / (2.0 * a);
+        let half_h_over_a = horiz / (2.0 * param);
         let sinh_val = half_h_over_a.sinh();
         let cosh_val = half_h_over_a.cosh();
 
-        let f = 2.0 * a * sinh_val - target;
+        let residual = 2.0 * param * sinh_val - target;
         // f'(a) = 2*sinh(h/(2a)) - (h/a)*cosh(h/(2a))
-        let f_prime = 2.0 * sinh_val - (h / a) * cosh_val;
+        let f_prime = 2.0 * sinh_val - (horiz / param) * cosh_val;
 
         if f_prime.abs() < f32::EPSILON {
             // Derivative too small, can't continue
             break;
         }
 
-        let delta = f / f_prime;
-        a -= delta;
+        let delta = residual / f_prime;
+        param -= delta;
 
         if delta.abs() < NEWTON_TOLERANCE {
-            return (a > MIN_CATENARY_PARAM).then_some(a);
+            return (param > MIN_CATENARY_PARAM).then_some(param);
         }
     }
 
     // Failed to converge — return current best if reasonable
-    (a > MIN_CATENARY_PARAM).then_some(a)
+    (param > MIN_CATENARY_PARAM).then_some(param)
 }
 
 /// Sample points along a 3D catenary curve between `start` and `end`.
@@ -102,7 +104,7 @@ pub fn sample_3d(
     gravity_dir: Vec3,
     resolution: u32,
 ) -> CableSegment {
-    let n = resolution.max(2) as usize;
+    let n = resolution.max(2).to_usize();
     let chord = end - start;
     let chord_length = chord.length();
 
@@ -163,7 +165,7 @@ pub fn sample_3d(
     let mut points = Vec::with_capacity(n);
 
     for i in 0..n {
-        let t = i as f32 / (n - 1) as f32;
+        let t = i.to_f32() / (n - 1).to_f32();
         let x_2d = t * horizontal_dist;
         let y_2d = catenary_a * ((x_2d - x_offset) / catenary_a).cosh() + y_offset;
 
@@ -179,7 +181,7 @@ pub fn sample_3d(
 fn sample_straight_line(start: Vec3, end: Vec3, n: usize) -> CableSegment {
     let mut points = Vec::with_capacity(n);
     for i in 0..n {
-        let t = i as f32 / (n - 1) as f32;
+        let t = i.to_f32() / (n - 1).to_f32();
         points.push(start.lerp(end, t));
     }
     CableSegment::from_points(points)
@@ -207,11 +209,11 @@ fn sample_vertical_hang(
     let half_n = n / 2;
 
     for i in 0..half_n {
-        let t = i as f32 / half_n as f32;
+        let t = i.to_f32() / half_n.to_f32();
         points.push(start.lerp(midpoint, t));
     }
     for i in 0..(n - half_n) {
-        let t = i as f32 / (n - half_n - 1).max(1) as f32;
+        let t = i.to_f32() / (n - half_n - 1).max(1).to_f32();
         points.push(midpoint.lerp(end, t));
     }
 
@@ -233,7 +235,7 @@ fn sample_parabolic_fallback(
 
     let mut points = Vec::with_capacity(n);
     for i in 0..n {
-        let t = i as f32 / (n - 1) as f32;
+        let t = i.to_f32() / (n - 1).to_f32();
         let base = start + t * chord;
         let droop = 4.0 * sag * t * (1.0 - t);
         points.push(base + droop * gravity_norm);
@@ -268,22 +270,26 @@ impl Default for CatenarySolver {
 
 impl CatenarySolver {
     /// Create a catenary solver with default parameters.
+    #[must_use]
     pub fn new() -> Self { Self::default() }
 
     /// Set the slack factor.
-    pub fn with_slack(mut self, slack: f32) -> Self {
+    #[must_use]
+    pub const fn with_slack(mut self, slack: f32) -> Self {
         self.slack = slack;
         self
     }
 
     /// Set the gravity vector.
-    pub fn with_gravity(mut self, gravity: Vec3) -> Self {
+    #[must_use]
+    pub const fn with_gravity(mut self, gravity: Vec3) -> Self {
         self.gravity = gravity;
         self
     }
 
     /// Set the default sample resolution.
-    pub fn with_resolution(mut self, resolution: u32) -> Self {
+    #[must_use]
+    pub const fn with_resolution(mut self, resolution: u32) -> Self {
         self.resolution = resolution;
         self
     }

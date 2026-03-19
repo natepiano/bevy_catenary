@@ -5,6 +5,8 @@ use std::collections::BinaryHeap;
 use std::collections::HashMap;
 
 use bevy::math::Vec3;
+use bevy_kana::ToF32;
+use bevy_kana::ToI32;
 
 use super::constants::DEFAULT_GRID_SIZE;
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
@@ -23,9 +25,9 @@ impl Cell {
     fn to_world(self, origin: Vec3, grid_size: f32) -> Vec3 {
         origin
             + Vec3::new(
-                self.x as f32 * grid_size,
-                self.y as f32 * grid_size,
-                self.z as f32 * grid_size,
+                self.x.to_f32() * grid_size,
+                self.y.to_f32() * grid_size,
+                self.z.to_f32() * grid_size,
             )
     }
 }
@@ -79,16 +81,19 @@ impl Default for AStarPlanner {
 
 impl AStarPlanner {
     /// Create a planner with default settings.
+    #[must_use]
     pub fn new() -> Self { Self::default() }
 
     /// Set the grid cell size.
-    pub fn with_grid_size(mut self, grid_size: f32) -> Self {
+    #[must_use]
+    pub const fn with_grid_size(mut self, grid_size: f32) -> Self {
         self.grid_size = grid_size;
         self
     }
 
     /// Set the obstacle clearance margin.
-    pub fn with_margin(mut self, margin: f32) -> Self {
+    #[must_use]
+    pub const fn with_margin(mut self, margin: f32) -> Self {
         self.margin = margin;
         self
     }
@@ -97,9 +102,9 @@ impl AStarPlanner {
     fn world_to_cell(&self, pos: Vec3, origin: Vec3) -> Cell {
         let relative = pos - origin;
         Cell {
-            x: (relative.x / self.grid_size).round() as i32,
-            y: (relative.y / self.grid_size).round() as i32,
-            z: (relative.z / self.grid_size).round() as i32,
+            x: (relative.x / self.grid_size).round().to_i32(),
+            y: (relative.y / self.grid_size).round().to_i32(),
+            z: (relative.z / self.grid_size).round().to_i32(),
         }
     }
 
@@ -140,9 +145,9 @@ impl AStarPlanner {
 
     /// Euclidean distance between two cells (heuristic).
     fn heuristic(a: Cell, b: Cell) -> f32 {
-        let dx = (a.x - b.x) as f32;
-        let dy = (a.y - b.y) as f32;
-        let dz = (a.z - b.z) as f32;
+        let dx = (a.x - b.x).to_f32();
+        let dy = (a.y - b.y).to_f32();
+        let dz = (a.z - b.z).to_f32();
         (dx * dx + dy * dy + dz * dz).sqrt()
     }
 
@@ -266,7 +271,7 @@ impl AStarPlanner {
     fn is_direct_path_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
         let steps = 20;
         for i in 0..=steps {
-            let t = i as f32 / steps as f32;
+            let t = i.to_f32() / steps.to_f32();
             let point = start.lerp(end, t);
             if self.is_blocked(point, obstacles) {
                 return true;

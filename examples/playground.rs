@@ -265,7 +265,9 @@ fn main() {
             Update,
             (
                 frame_initial_section,
+                rebuild_on_geometry_change,
                 generate_cable_meshes,
+                rebuild_on_geometry_change,
                 handle_keyboard,
                 handle_nav_buttons,
                 handle_drag,
@@ -1270,7 +1272,11 @@ fn generate_cable_meshes(
             } else {
                 settings.tube_radius
             },
-            sides:                        if is_inside_view { 64 } else { settings.tube_sides },
+            sides:                        if is_inside_view {
+                64
+            } else {
+                settings.tube_sides
+            },
             cap_start:                    if start_shared {
                 CapStyle::None
             } else {
@@ -1325,6 +1331,22 @@ fn generate_cable_meshes(
         }
 
         commands.entity(entity).insert(CableMeshSpawned);
+    }
+}
+
+/// When cable geometry is recomputed (e.g., endpoint moved), remove old mesh so it regenerates.
+fn rebuild_on_geometry_change(
+    mut commands: Commands,
+    changed_cables: Query<Entity, (Changed<ComputedCableGeometry>, With<CableMeshSpawned>)>,
+    mesh_children: Query<(Entity, &ChildOf), With<Mesh3d>>,
+) {
+    for cable_entity in &changed_cables {
+        commands.entity(cable_entity).remove::<CableMeshSpawned>();
+        for (child_entity, child_of) in &mesh_children {
+            if child_of.parent() == cable_entity {
+                commands.entity(child_entity).despawn();
+            }
+        }
     }
 }
 
