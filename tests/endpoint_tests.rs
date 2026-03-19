@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! Integration tests for entity-based cable endpoints.
 //!
 //! Uses `MinimalPlugins` for headless testing — no window, no renderer.

@@ -106,6 +106,7 @@ pub struct CableSegment {
 
 impl CableSegment {
     /// Create a segment from points, computing tangents and arc lengths.
+    #[must_use]
     pub fn from_points(points: Vec<Vec3>) -> Self {
         if points.is_empty() {
             return Self::default();
@@ -118,7 +119,7 @@ impl CableSegment {
 
         arc_lengths.push(0.0);
 
-        for i in 0..n {
+        for (i, point) in points.iter().enumerate() {
             // Compute tangent via finite differences
             let tangent = if n == 1 {
                 Vec3::Y
@@ -132,7 +133,7 @@ impl CableSegment {
             tangents.push(tangent);
 
             if i > 0 {
-                cumulative += points[i].distance(points[i - 1]);
+                cumulative += point.distance(points[i - 1]);
                 arc_lengths.push(cumulative);
             }
         }
@@ -160,6 +161,7 @@ pub struct CableGeometry {
 
 impl CableGeometry {
     /// Build a `CableGeometry` from a list of segments and the waypoints that produced them.
+    #[must_use]
     pub fn from_segments(segments: Vec<CableSegment>, waypoints: Vec<Vec3>) -> Self {
         let total_length = segments.iter().map(|s| s.length).sum();
         Self {

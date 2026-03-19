@@ -78,7 +78,7 @@ impl OrthogonalPlanner {
 
     /// Build an axis-aligned path moving one axis at a time in the given order.
     /// Each step changes exactly one of X, Y, Z.
-    fn axis_path(&self, start: Vec3, end: Vec3, order: &[usize]) -> Vec<Vec3> {
+    fn axis_path(start: Vec3, end: Vec3, order: &[usize]) -> Vec<Vec3> {
         let delta = end - start;
         let mut current = start;
         let mut waypoints = vec![start];
@@ -97,10 +97,11 @@ impl OrthogonalPlanner {
         }
 
         // Ensure we end exactly at the target
-        if let Some(last) = waypoints.last() {
-            if last.distance(end) > f32::EPSILON {
-                waypoints.push(end);
-            }
+        if waypoints
+            .last()
+            .is_some_and(|last| last.distance(end) > f32::EPSILON)
+        {
+            waypoints.push(end);
         }
 
         waypoints
@@ -110,10 +111,13 @@ impl OrthogonalPlanner {
     /// going out, across, and back in. Each segment is axis-aligned.
     fn u_path(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> Vec<Vec3> {
         // Find the maximum obstacle extent to route around
-        let offset = obstacles.iter().fold(0.0_f32, |acc, obs| {
-            let extent = obs.half_extents.max_element();
-            acc.max(extent)
-        }) + self.margin * 2.0;
+        let offset = self.margin.mul_add(
+            2.0,
+            obstacles.iter().fold(0.0_f32, |acc, obs| {
+                let extent = obs.half_extents.max_element();
+                acc.max(extent)
+            }),
+        );
 
         // Route below obstacles: go down, across X, across Z, up
         let below = start.y.min(end.y) - offset;
@@ -144,7 +148,7 @@ impl PathPlanner for OrthogonalPlanner {
         };
 
         for order in orders {
-            let path = self.axis_path(start, end, order);
+            let path = Self::axis_path(start, end, order);
             if obstacles.is_empty() || !self.is_path_blocked(&path, obstacles) {
                 return path;
             }

@@ -32,7 +32,7 @@ impl Cell {
     }
 }
 
-/// Entry in the A* priority queue (min-heap by f_score).
+/// Entry in the A* priority queue (min-heap by `f_score`).
 struct OpenEntry {
     cell:    Cell,
     f_score: f32,
@@ -148,7 +148,7 @@ impl AStarPlanner {
         let dx = (a.x - b.x).to_f32();
         let dy = (a.y - b.y).to_f32();
         let dz = (a.z - b.z).to_f32();
-        (dx * dx + dy * dy + dz * dz).sqrt()
+        dz.mul_add(dz, dx.mul_add(dx, dy * dy)).sqrt()
     }
 
     /// Run A* and return the path as grid cells.
@@ -206,12 +206,12 @@ impl AStarPlanner {
 
                 let is_better = g_score
                     .get(&neighbor)
-                    .map_or(true, |&existing| tentative_g < existing);
+                    .is_none_or(|&existing| tentative_g < existing);
 
                 if is_better {
                     g_score.insert(neighbor, tentative_g);
                     came_from.insert(neighbor, current);
-                    let f = tentative_g + Self::heuristic(neighbor, goal) * self.grid_size;
+                    let f = Self::heuristic(neighbor, goal).mul_add(self.grid_size, tentative_g);
                     open.push(OpenEntry {
                         cell:    neighbor,
                         f_score: f,
@@ -230,9 +230,7 @@ impl PathPlanner for AStarPlanner {
             return vec![start, end];
         }
 
-        // Check if direct path is blocked
-        let direct_blocked = self.is_direct_path_blocked(start, end, obstacles);
-        if !direct_blocked {
+        if !self.is_direct_path_blocked(start, end, obstacles) {
             return vec![start, end];
         }
 
@@ -240,9 +238,8 @@ impl PathPlanner for AStarPlanner {
         let start_cell = self.world_to_cell(start, origin);
         let goal_cell = self.world_to_cell(end, origin);
 
-        let path_cells = match self.find_path(start_cell, goal_cell, origin, obstacles) {
-            Some(cells) => cells,
-            None => return vec![start, end], // Fallback: direct path
+        let Some(path_cells) = self.find_path(start_cell, goal_cell, origin, obstacles) else {
+            return vec![start, end];
         };
 
         // Convert cells to world positions

@@ -1,4 +1,4 @@
-//! Progressive cable playground -showcases bevy_catenary features from simple to complex.
+//! Progressive cable playground — showcases `bevy_catenary` features from simple to complex.
 //!
 //! 7 sections navigated with arrow buttons or Left/Right keys. Camera animates
 //! to frame each section.
@@ -47,6 +47,7 @@ use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
+use bevy_kana::ToI32;
 use bevy_panorbit_camera::PanOrbitCamera;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use bevy_panorbit_camera::TrackpadBehavior;
@@ -98,7 +99,6 @@ const GROUND_DEPTH: f32 = 14.0;
 const NAV_DURATION_MS: u64 = 1200;
 const ZOOM_DURATION_MS: u64 = 1000;
 const ZOOM_MARGIN_MESH: f32 = 0.15;
-const ZOOM_MARGIN_SCENE: f32 = 0.08;
 const ZOOM_MARGIN_NAV: f32 = 0.12;
 
 // Light
@@ -184,12 +184,8 @@ enum NavDirection {
 #[derive(Component)]
 struct NavButton(NavDirection);
 
-#[derive(Resource)]
+#[derive(Default, Resource)]
 struct InspectorVisible(bool);
-
-impl Default for InspectorVisible {
-    fn default() -> Self { Self(false) }
-}
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -394,256 +390,66 @@ fn setup_sections(
 
     let mut bounds = Vec::new();
 
-    // Section 0: Simple Catenary
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
         &mut materials,
         SECTION_X[0],
     ));
-    {
-        let cx = SECTION_X[0];
-        let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
-        let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
-        spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
-        spawn_cable(
-            &mut commands,
-            start,
-            end,
-            Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
-            vec![],
-        );
-    }
+    setup_section_catenary(&mut commands, &node_mesh, &node_mat);
 
-    // Section 1: Cap Styles -3 cables stacked in Z
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
         &mut materials,
         SECTION_X[1],
     ));
-    {
-        let cx = SECTION_X[1];
-        for (z, start_cap, end_cap, _label) in [
-            (-1.5_f32, CapStyle::Round, CapStyle::Round, "Round / Round"),
-            (0.0, CapStyle::flat(), CapStyle::flat(), "Flat / Flat"),
-            (1.5, CapStyle::Round, CapStyle::None, "Round / None"),
-        ] {
-            let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, z);
-            let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, z);
-            spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
-            spawn_cable_with_caps(
-                &mut commands,
-                start,
-                end,
-                Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
-                vec![],
-                start_cap,
-                end_cap,
-            );
-        }
-    }
+    setup_section_cap_styles(&mut commands, &node_mesh, &node_mat);
 
-    // Section 2: Solver Comparison -3 cables stacked in Z
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
         &mut materials,
         SECTION_X[2],
     ));
-    {
-        let cx = SECTION_X[2];
-        // Catenary
-        let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, -1.5);
-        let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, -1.5);
-        spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
-        spawn_cable(
-            &mut commands,
-            start,
-            end,
-            Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
-            vec![],
-        );
+    setup_section_solver_comparison(&mut commands, &node_mesh, &node_mat);
 
-        // Linear
-        let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
-        let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
-        spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
-        spawn_cable(&mut commands, start, end, Solver::Linear, vec![]);
-
-        // Orthogonal
-        let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y - 0.5, 1.5);
-        let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y + 0.5, 1.5);
-        spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
-        spawn_cable(
-            &mut commands,
-            start,
-            end,
-            Solver::Routed {
-                planner:    Planner::Orthogonal,
-                curve:      Curve::Linear,
-                resolution: 0,
-            },
-            vec![],
-        );
-    }
-
-    // Section 3: Entity Attachment -draggable cubes
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
         &mut materials,
         SECTION_X[3],
     ));
-    {
-        let cx = SECTION_X[3];
-        let drag_mesh = meshes.add(Cuboid::new(
-            DRAGGABLE_CUBE_SIZE * 2.0,
-            DRAGGABLE_CUBE_SIZE * 2.0,
-            DRAGGABLE_CUBE_SIZE * 2.0,
-        ));
-        let drag_mat = materials.add(StandardMaterial {
-            base_color: DRAGGABLE_COLOR,
-            ..default()
-        });
+    setup_section_entity_attachment(&mut commands, &mut meshes, &mut materials);
 
-        let left_cube = commands
-            .spawn((
-                Mesh3d(drag_mesh.clone()),
-                MeshMaterial3d(drag_mat.clone()),
-                Transform::from_translation(Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0)),
-                Draggable,
-                NodeCube,
-            ))
-            .observe(on_drag_start)
-            .id();
-
-        let right_cube = commands
-            .spawn((
-                Mesh3d(drag_mesh),
-                MeshMaterial3d(drag_mat),
-                Transform::from_translation(Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0)),
-                Draggable,
-                NodeCube,
-            ))
-            .observe(on_drag_start)
-            .id();
-
-        commands
-            .spawn(Cable {
-                solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
-                obstacles:  vec![],
-                resolution: 0,
-            })
-            .with_children(|parent| {
-                parent.spawn((
-                    CableEndpoint::new(CableEnd::Start, Vec3::ZERO),
-                    AttachedTo(left_cube),
-                ));
-                parent.spawn((
-                    CableEndpoint::new(CableEnd::End, Vec3::ZERO),
-                    AttachedTo(right_cube),
-                ));
-            });
-    }
-
-    // Section 4: Shared Hub -3 cables from a central draggable hub
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
         &mut materials,
         SECTION_X[4],
     ));
-    {
-        let cx = SECTION_X[4];
-        let drag_mesh = meshes.add(Sphere::new(0.35).mesh().uv(16, 16));
-        let drag_mat = materials.add(StandardMaterial {
-            base_color: DRAGGABLE_COLOR,
-            ..default()
-        });
+    setup_section_shared_hub(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &node_mesh,
+        &node_mat,
+    );
 
-        let hub = commands
-            .spawn((
-                Mesh3d(drag_mesh),
-                MeshMaterial3d(drag_mat),
-                Transform::from_translation(Vec3::new(cx, NODE_Y, 0.0)),
-                Draggable,
-                NodeCube,
-            ))
-            .observe(on_drag_start)
-            .id();
-
-        let spokes = [
-            Vec3::new(cx - 3.0, NODE_Y + 0.5, -1.5),
-            Vec3::new(cx + 3.0, NODE_Y + 0.5, -1.5),
-            Vec3::new(cx, NODE_Y + 0.5, 2.0),
-        ];
-
-        for spoke_pos in spokes {
-            spawn_node_cube(&mut commands, &node_mesh, &node_mat, spoke_pos);
-            commands
-                .spawn(Cable {
-                    solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
-                    obstacles:  vec![],
-                    resolution: 0,
-                })
-                .with_children(|parent| {
-                    parent.spawn((
-                        CableEndpoint::new(CableEnd::Start, Vec3::ZERO),
-                        AttachedTo(hub),
-                    ));
-                    parent.spawn(CableEndpoint::new(CableEnd::End, spoke_pos));
-                });
-        }
-    }
-
-    // Section 5: A* Routing -obstacle avoidance
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
         &mut materials,
         SECTION_X[5],
     ));
-    {
-        let cx = SECTION_X[5];
-        let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
-        let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
-        let obstacle_pos = Vec3::new(cx, NODE_Y, 0.0);
-        let obstacle = Obstacle::new(OBSTACLE_HALF_EXTENTS, obstacle_pos);
+    setup_section_astar(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &node_mesh,
+        &node_mat,
+    );
 
-        spawn_node_pair(&mut commands, &node_mesh, &node_mat, start, end);
-        spawn_cable(
-            &mut commands,
-            start,
-            end,
-            Solver::Routed {
-                planner:    Planner::AStar,
-                curve:      Curve::Catenary(CatenarySolver::new().with_slack(1.2)),
-                resolution: 0,
-            },
-            vec![obstacle],
-        );
-
-        // Obstacle box
-        commands
-            .spawn((
-                Mesh3d(meshes.add(Cuboid::new(
-                    OBSTACLE_HALF_EXTENTS.x * 2.0,
-                    OBSTACLE_HALF_EXTENTS.y * 2.0,
-                    OBSTACLE_HALF_EXTENTS.z * 2.0,
-                ))),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: OBSTACLE_COLOR,
-                    alpha_mode: AlphaMode::Blend,
-                    ..default()
-                })),
-                Transform::from_translation(obstacle_pos),
-                NotShadowCaster,
-            ))
-            .observe(on_mesh_clicked);
-    }
-
-    // Section 6: Detach Policy -click spheres to despawn
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
@@ -658,38 +464,282 @@ fn setup_sections(
         &node_mat,
     );
 
-    // Section 7: Inside View — large tube rendered inside-only, viewed end-on
     bounds.push(spawn_section_bounds(
         &mut commands,
         &mut meshes,
         &mut materials,
         SECTION_X[7],
     ));
-    {
-        let cx = SECTION_X[7];
-        // Tube angled to match the camera's viewing angle (yaw ~-0.48, pitch ~0.5).
-        // The near opening faces the camera; the tube extends away and slightly down-left.
-        // sin/cos(0.48) ≈ 0.46/0.88 for X offset, tan(0.5) ≈ 0.55 for Y drop.
-        // Tube lies mostly flat along Z with a slight sideways lean.
-        // The near opening faces the camera; we see inside it.
-        let start = Vec3::new(cx + 0.8, NODE_Y + 0.8, 3.0);
-        let end = Vec3::new(cx - 0.8, NODE_Y - 1.5, -3.0);
-        commands
-            .spawn((
-                Cable {
-                    solver:     Solver::Linear,
-                    obstacles:  vec![],
-                    resolution: 0,
-                },
-                InsideViewCable,
-            ))
-            .with_children(|parent| {
-                parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(CapStyle::None));
-                parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(CapStyle::None));
-            });
-    }
+    setup_section_inside_view(&mut commands);
 
     commands.insert_resource(SectionBounds(bounds));
+}
+
+/// Section 0: Simple catenary cable between two nodes.
+fn setup_section_catenary(
+    commands: &mut Commands,
+    node_mesh: &Handle<Mesh>,
+    node_mat: &Handle<StandardMaterial>,
+) {
+    let cx = SECTION_X[0];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+    spawn_node_pair(commands, node_mesh, node_mat, start, end);
+    spawn_cable(
+        commands,
+        start,
+        end,
+        Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
+        vec![],
+    );
+}
+
+/// Section 1: Three cables demonstrating different cap styles.
+fn setup_section_cap_styles(
+    commands: &mut Commands,
+    node_mesh: &Handle<Mesh>,
+    node_mat: &Handle<StandardMaterial>,
+) {
+    let cx = SECTION_X[1];
+    for (z, start_cap, end_cap, _label) in [
+        (-1.5_f32, CapStyle::Round, CapStyle::Round, "Round / Round"),
+        (0.0, CapStyle::flat(), CapStyle::flat(), "Flat / Flat"),
+        (1.5, CapStyle::Round, CapStyle::None, "Round / None"),
+    ] {
+        let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, z);
+        let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, z);
+        spawn_node_pair(commands, node_mesh, node_mat, start, end);
+        spawn_cable_with_caps(
+            commands,
+            start,
+            end,
+            Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+            vec![],
+            start_cap,
+            end_cap,
+        );
+    }
+}
+
+/// Section 2: Catenary, linear, and orthogonal solvers side by side.
+fn setup_section_solver_comparison(
+    commands: &mut Commands,
+    node_mesh: &Handle<Mesh>,
+    node_mat: &Handle<StandardMaterial>,
+) {
+    let cx = SECTION_X[2];
+
+    // Catenary
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, -1.5);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, -1.5);
+    spawn_node_pair(commands, node_mesh, node_mat, start, end);
+    spawn_cable(
+        commands,
+        start,
+        end,
+        Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
+        vec![],
+    );
+
+    // Linear
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+    spawn_node_pair(commands, node_mesh, node_mat, start, end);
+    spawn_cable(commands, start, end, Solver::Linear, vec![]);
+
+    // Orthogonal
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y - 0.5, 1.5);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y + 0.5, 1.5);
+    spawn_node_pair(commands, node_mesh, node_mat, start, end);
+    spawn_cable(
+        commands,
+        start,
+        end,
+        Solver::Routed {
+            planner:    Planner::Orthogonal,
+            curve:      Curve::Linear,
+            resolution: 0,
+        },
+        vec![],
+    );
+}
+
+/// Section 3: Cables attached to draggable cubes.
+fn setup_section_entity_attachment(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    let cx = SECTION_X[3];
+    let drag_mesh = meshes.add(Cuboid::new(
+        DRAGGABLE_CUBE_SIZE * 2.0,
+        DRAGGABLE_CUBE_SIZE * 2.0,
+        DRAGGABLE_CUBE_SIZE * 2.0,
+    ));
+    let drag_mat = materials.add(StandardMaterial {
+        base_color: DRAGGABLE_COLOR,
+        ..default()
+    });
+
+    let left_cube = commands
+        .spawn((
+            Mesh3d(drag_mesh.clone()),
+            MeshMaterial3d(drag_mat.clone()),
+            Transform::from_translation(Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0)),
+            Draggable,
+            NodeCube,
+        ))
+        .observe(on_drag_start)
+        .id();
+
+    let right_cube = commands
+        .spawn((
+            Mesh3d(drag_mesh),
+            MeshMaterial3d(drag_mat),
+            Transform::from_translation(Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0)),
+            Draggable,
+            NodeCube,
+        ))
+        .observe(on_drag_start)
+        .id();
+
+    commands
+        .spawn(Cable {
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
+            obstacles:  vec![],
+            resolution: 0,
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                CableEndpoint::new(CableEnd::Start, Vec3::ZERO),
+                AttachedTo(left_cube),
+            ));
+            parent.spawn((
+                CableEndpoint::new(CableEnd::End, Vec3::ZERO),
+                AttachedTo(right_cube),
+            ));
+        });
+}
+
+/// Section 4: Three cables from a central draggable hub.
+fn setup_section_shared_hub(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    node_mesh: &Handle<Mesh>,
+    node_mat: &Handle<StandardMaterial>,
+) {
+    let cx = SECTION_X[4];
+    let drag_mesh = meshes.add(Sphere::new(0.35).mesh().uv(16, 16));
+    let drag_mat = materials.add(StandardMaterial {
+        base_color: DRAGGABLE_COLOR,
+        ..default()
+    });
+
+    let hub = commands
+        .spawn((
+            Mesh3d(drag_mesh),
+            MeshMaterial3d(drag_mat),
+            Transform::from_translation(Vec3::new(cx, NODE_Y, 0.0)),
+            Draggable,
+            NodeCube,
+        ))
+        .observe(on_drag_start)
+        .id();
+
+    let spokes = [
+        Vec3::new(cx - 3.0, NODE_Y + 0.5, -1.5),
+        Vec3::new(cx + 3.0, NODE_Y + 0.5, -1.5),
+        Vec3::new(cx, NODE_Y + 0.5, 2.0),
+    ];
+
+    for spoke_pos in spokes {
+        spawn_node_cube(commands, node_mesh, node_mat, spoke_pos);
+        commands
+            .spawn(Cable {
+                solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+                obstacles:  vec![],
+                resolution: 0,
+            })
+            .with_children(|parent| {
+                parent.spawn((
+                    CableEndpoint::new(CableEnd::Start, Vec3::ZERO),
+                    AttachedTo(hub),
+                ));
+                parent.spawn(CableEndpoint::new(CableEnd::End, spoke_pos));
+            });
+    }
+}
+
+/// Section 5: A* pathfinding around an obstacle.
+fn setup_section_astar(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    node_mesh: &Handle<Mesh>,
+    node_mat: &Handle<StandardMaterial>,
+) {
+    let cx = SECTION_X[5];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+    let obstacle_pos = Vec3::new(cx, NODE_Y, 0.0);
+    let obstacle = Obstacle::new(OBSTACLE_HALF_EXTENTS, obstacle_pos);
+
+    spawn_node_pair(commands, node_mesh, node_mat, start, end);
+    spawn_cable(
+        commands,
+        start,
+        end,
+        Solver::Routed {
+            planner:    Planner::AStar,
+            curve:      Curve::Catenary(CatenarySolver::new().with_slack(1.2)),
+            resolution: 0,
+        },
+        vec![obstacle],
+    );
+
+    // Obstacle box
+    commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(
+                OBSTACLE_HALF_EXTENTS.x * 2.0,
+                OBSTACLE_HALF_EXTENTS.y * 2.0,
+                OBSTACLE_HALF_EXTENTS.z * 2.0,
+            ))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: OBSTACLE_COLOR,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            })),
+            Transform::from_translation(obstacle_pos),
+            NotShadowCaster,
+        ))
+        .observe(on_mesh_clicked);
+}
+
+/// Section 7: Inside view — large tube rendered inside-only.
+fn setup_section_inside_view(commands: &mut Commands) {
+    let cx = SECTION_X[7];
+    // Tube angled to match the camera's viewing angle (yaw ~-0.48, pitch ~0.5).
+    // The near opening faces the camera; the tube extends away and slightly down-left.
+    // sin/cos(0.48) ≈ 0.46/0.88 for X offset, tan(0.5) ≈ 0.55 for Y drop.
+    // Tube lies mostly flat along Z with a slight sideways lean.
+    // The near opening faces the camera; we see inside it.
+    let start = Vec3::new(cx + 0.8, NODE_Y + 0.8, 3.0);
+    let end = Vec3::new(cx - 0.8, NODE_Y - 1.5, -3.0);
+    commands
+        .spawn((
+            Cable {
+                solver:     Solver::Linear,
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            InsideViewCable,
+        ))
+        .with_children(|parent| {
+            parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(CapStyle::None));
+            parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(CapStyle::None));
+        });
 }
 
 /// Spawn the detach demo section (can be called again on reset).
@@ -782,7 +832,13 @@ fn spawn_detach_demo(
 // ============================================================================
 
 fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
-    // Navigation help (top-left)
+    spawn_help_text(&mut commands, scene.camera);
+    spawn_keyboard_shortcuts(&mut commands, scene.camera);
+    spawn_nav_bar(&mut commands, scene.camera);
+}
+
+/// Navigation help panel (top-left corner).
+fn spawn_help_text(commands: &mut Commands, camera: Entity) {
     commands.spawn((
         Text::new(
             "Orbit: Middle-mouse (or trackpad)\n\
@@ -800,10 +856,12 @@ fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
             ..default()
         },
         Pickable::IGNORE,
-        UiTargetCamera(scene.camera),
+        UiTargetCamera(camera),
     ));
+}
 
-    // Keyboard shortcuts (bottom-left)
+/// Keyboard shortcuts panel (bottom-left corner).
+fn spawn_keyboard_shortcuts(commands: &mut Commands, camera: Entity) {
     commands.spawn((
         Text::new(
             "D - Debug gizmos\n\
@@ -823,10 +881,12 @@ fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
             ..default()
         },
         Pickable::IGNORE,
-        UiTargetCamera(scene.camera),
+        UiTargetCamera(camera),
     ));
+}
 
-    // Navigation bar (bottom-center)
+/// Section navigation bar (bottom-center).
+fn spawn_nav_bar(commands: &mut Commands, camera: Entity) {
     commands
         .spawn((
             Node {
@@ -843,7 +903,7 @@ fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
             Pickable::IGNORE,
-            UiTargetCamera(scene.camera),
+            UiTargetCamera(camera),
         ))
         .with_children(|parent| {
             // Left arrow
@@ -919,7 +979,11 @@ fn spawn_section_bounds(
 ) -> Entity {
     commands
         .spawn((
-            Mesh3d(meshes.add(Cuboid::new(SPAN_HALF_X * 2.0 + 2.0, NODE_Y + 2.0, 5.0))),
+            Mesh3d(meshes.add(Cuboid::new(
+                SPAN_HALF_X.mul_add(2.0, 2.0),
+                NODE_Y + 2.0,
+                5.0,
+            ))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::srgba(0.0, 0.0, 0.0, 0.0),
                 alpha_mode: AlphaMode::Blend,
@@ -1309,25 +1373,25 @@ fn generate_cable_meshes(
             ))
             .observe(on_mesh_clicked);
 
-        if let (true, Some(key), Some(pos)) = (start_shared, start_key, start_pos) {
-            if hub_spawned.insert(key) {
-                commands.spawn((
-                    Mesh3d(joint_mesh.clone()),
-                    MeshMaterial3d(cable_material.0.clone()),
-                    Transform::from_translation(pos),
-                    HubSphere,
-                ));
-            }
+        if let (true, Some(key), Some(pos)) = (start_shared, start_key, start_pos)
+            && hub_spawned.insert(key)
+        {
+            commands.spawn((
+                Mesh3d(joint_mesh.clone()),
+                MeshMaterial3d(cable_material.0.clone()),
+                Transform::from_translation(pos),
+                HubSphere,
+            ));
         }
-        if let (true, Some(key), Some(pos)) = (end_shared, end_key, end_pos) {
-            if hub_spawned.insert(key) {
-                commands.spawn((
-                    Mesh3d(joint_mesh.clone()),
-                    MeshMaterial3d(cable_material.0.clone()),
-                    Transform::from_translation(pos),
-                    HubSphere,
-                ));
-            }
+        if let (true, Some(key), Some(pos)) = (end_shared, end_key, end_pos)
+            && hub_spawned.insert(key)
+        {
+            commands.spawn((
+                Mesh3d(joint_mesh.clone()),
+                MeshMaterial3d(cable_material.0.clone()),
+                Transform::from_translation(pos),
+                HubSphere,
+            ));
         }
 
         commands.entity(entity).insert(CableMeshSpawned);
@@ -1369,6 +1433,7 @@ fn rebuild_on_settings_change(
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn handle_keyboard(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
@@ -1471,8 +1536,8 @@ const QUANTIZE_SCALE: f32 = 1000.0;
 
 fn quantize_position(pos: Vec3) -> [i32; 3] {
     [
-        (pos.x * QUANTIZE_SCALE).round() as i32,
-        (pos.y * QUANTIZE_SCALE).round() as i32,
-        (pos.z * QUANTIZE_SCALE).round() as i32,
+        (pos.x * QUANTIZE_SCALE).round().to_i32(),
+        (pos.y * QUANTIZE_SCALE).round().to_i32(),
+        (pos.z * QUANTIZE_SCALE).round().to_i32(),
     ]
 }

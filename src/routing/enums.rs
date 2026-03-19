@@ -59,11 +59,12 @@ pub enum Curve {
 
 impl Solver {
     /// Dispatch to the underlying solver implementation.
+    #[must_use]
     pub fn solve(&self, request: &RouteRequest) -> CableGeometry {
         match self {
-            Solver::Catenary(catenary) => catenary.solve(request),
-            Solver::Linear => LinearSolver.solve(request),
-            Solver::Routed {
+            Self::Catenary(catenary) => catenary.solve(request),
+            Self::Linear => LinearSolver.solve(request),
+            Self::Routed {
                 planner,
                 curve,
                 resolution,
@@ -92,9 +93,9 @@ impl Planner {
     /// Find waypoints from `start` to `end`, routing around `obstacles`.
     fn plan(&self, start: Vec3, end: Vec3, obstacles: &[super::types::Obstacle]) -> Vec<Vec3> {
         match self {
-            Planner::Direct => DirectPlanner.plan(start, end, obstacles),
-            Planner::Orthogonal => OrthogonalPlanner::new().plan(start, end, obstacles),
-            Planner::AStar => AStarPlanner::new().plan(start, end, obstacles),
+            Self::Direct => DirectPlanner.plan(start, end, obstacles),
+            Self::Orthogonal => OrthogonalPlanner::new().plan(start, end, obstacles),
+            Self::AStar => AStarPlanner::new().plan(start, end, obstacles),
         }
     }
 }
@@ -103,8 +104,8 @@ impl Curve {
     /// Generate a curve segment between two waypoints.
     fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment {
         match self {
-            Curve::Catenary(catenary) => catenary.solve_segment(start, end, resolution),
-            Curve::Linear => LinearSolver.solve_segment(start, end, resolution),
+            Self::Catenary(catenary) => catenary.solve_segment(start, end, resolution),
+            Self::Linear => LinearSolver.solve_segment(start, end, resolution),
         }
     }
 }

@@ -27,12 +27,11 @@ const DEFAULT_ARM_MULTIPLIER: f32 = 1.0;
 /// Push a triangle with correct winding. When `flip` is true, the winding is reversed
 /// so that the face normal points the opposite direction.
 fn push_tri(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, flip: bool) {
+    indices.push(a);
     if flip {
-        indices.push(a);
         indices.push(c);
         indices.push(b);
     } else {
-        indices.push(a);
         indices.push(b);
         indices.push(c);
     }
@@ -43,6 +42,38 @@ fn push_tri(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, flip: bool) {
 fn push_quad(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, d: u32, flip: bool) {
     push_tri(indices, a, b, c, flip);
     push_tri(indices, b, d, c, flip);
+}
+
+/// Mutable references to the mesh attribute buffers being built.
+///
+/// Bundles the four output vectors that every mesh-building helper needs,
+/// reducing argument counts on internal functions.
+struct MeshBuffers<'a> {
+    positions: &'a mut Vec<[f32; 3]>,
+    normals:   &'a mut Vec<[f32; 3]>,
+    uvs:       &'a mut Vec<[f32; 2]>,
+    indices:   &'a mut Vec<u32>,
+}
+
+/// Resolve elbow arm lengths from per-elbow overrides or the global multiplier.
+fn resolve_elbow_arms(
+    config: &TubeMeshConfig,
+    elbow_idx: usize,
+    p0: Vec3,
+    p3: Vec3,
+    max_arm: f32,
+) -> (f32, f32) {
+    config
+        .elbow_arm_overrides
+        .as_ref()
+        .and_then(|overrides| overrides.get(elbow_idx))
+        .map_or_else(
+            || {
+                let arm = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
+                (arm, arm)
+            },
+            |&(a1, a2)| (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm)),
+        )
 }
 
 /// How to cap each end of a tube mesh.
@@ -144,18 +175,11 @@ impl Default for TubeMeshConfig {
     }
 }
 
-/// Generate a tube `Mesh` from cable geometry.
-///
-/// All segments are flattened into a single continuous polyline,
-/// producing one seamless tube for the entire cable path.
-pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> Mesh {
-    let sides = config.sides.max(3);
-    let total_length = geometry.total_length.max(0.001);
-
-    // Flatten all segments into one continuous polyline, deduplicating boundary points.
-    let mut all_points: Vec<Vec3> = Vec::new();
-    let mut all_tangents: Vec<Vec3> = Vec::new();
-    let mut all_arc_lengths: Vec<f32> = Vec::new();
+/// Flatten all geometry segments into one continuous polyline, deduplicating boundary points.
+fn flatten_geometry(geometry: &CableGeometry) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
+    let mut points: Vec<Vec3> = Vec::new();
+    let mut tangents: Vec<Vec3> = Vec::new();
+    let mut arc_lengths: Vec<f32> = Vec::new();
     let mut arc_offset = 0.0_f32;
 
     for segment in &geometry.segments {
@@ -164,16 +188,102 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
             continue;
         }
 
-        let start_idx = if all_points.is_empty() { 0 } else { 1 };
+        let start_idx = usize::from(!points.is_empty());
 
         for i in start_idx..segment.points.len() {
-            all_points.push(segment.points[i]);
-            all_tangents.push(segment.tangents[i]);
-            all_arc_lengths.push(segment.arc_lengths[i] + arc_offset);
+            points.push(segment.points[i]);
+            tangents.push(segment.tangents[i]);
+            arc_lengths.push(segment.arc_lengths[i] + arc_offset);
         }
 
         arc_offset += segment.length;
     }
+
+    (points, tangents, arc_lengths)
+}
+
+/// Add start and end caps to the tube mesh.
+fn add_end_caps(
+    all_points: &[Vec3],
+    all_tangents: &[Vec3],
+    frames: &[(Vec3, Vec3)],
+    config: &TubeMeshConfig,
+    sides: u32,
+    point_count: usize,
+    buffers: &mut MeshBuffers,
+) {
+    let cap_rings = sides.max(8);
+
+    if point_count < 2 {
+        return;
+    }
+
+    match config.cap_start {
+        CapStyle::Round => {
+            let (start_normal, start_binormal) = frames[0];
+            add_hemisphere_cap(
+                &all_points[0],
+                &(-all_tangents[0]),
+                &start_normal,
+                &start_binormal,
+                config.radius,
+                sides,
+                cap_rings,
+                0,
+                true,
+                buffers,
+            );
+        },
+        CapStyle::Flat { ref normal } => {
+            let dir = normal.unwrap_or(-all_tangents[0]);
+            add_flat_cap(&all_points[0], &dir, 0, sides, true, buffers);
+        },
+        CapStyle::None => {},
+    }
+
+    let last = point_count - 1;
+    let last_ring_base = (last * sides.to_usize()).to_u32();
+    match config.cap_end {
+        CapStyle::Round => {
+            let (end_normal, end_binormal) = frames[last];
+            add_hemisphere_cap(
+                &all_points[last],
+                &all_tangents[last],
+                &end_normal,
+                &end_binormal,
+                config.radius,
+                sides,
+                cap_rings,
+                last_ring_base,
+                false,
+                buffers,
+            );
+        },
+        CapStyle::Flat { ref normal } => {
+            let dir = normal.unwrap_or(all_tangents[last]);
+            add_flat_cap(
+                &all_points[last],
+                &dir,
+                last_ring_base,
+                sides,
+                false,
+                buffers,
+            );
+        },
+        CapStyle::None => {},
+    }
+}
+
+/// Generate a tube `Mesh` from cable geometry.
+///
+/// All segments are flattened into a single continuous polyline,
+/// producing one seamless tube for the entire cable path.
+#[must_use]
+pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> Mesh {
+    let sides = config.sides.max(3);
+    let total_length = geometry.total_length.max(0.001);
+
+    let (mut all_points, mut all_tangents, mut all_arc_lengths) = flatten_geometry(geometry);
 
     if all_points.len() < 2 {
         return Mesh::new(PrimitiveTopology::TriangleList, default());
@@ -196,7 +306,7 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
 
     // Insert elbow joints at sharp bends to create smooth rounded curves.
     let (all_points, all_tangents, all_arc_lengths) =
-        insert_knee_rings(all_points, all_tangents, all_arc_lengths, config);
+        insert_knee_rings(all_points, all_arc_lengths, config);
     let point_count = all_points.len();
 
     // Compute rotation-minimizing frames along the entire path
@@ -207,7 +317,7 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(point_count * sides.to_usize());
     let mut indices: Vec<u32> = Vec::new();
 
-    for (i, ((point, _tangent), (frame_normal, binormal))) in all_points
+    for (i, ((point, ..), (frame_normal, binormal))) in all_points
         .iter()
         .zip(&all_tangents)
         .zip(&frames)
@@ -252,7 +362,7 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
                         false,
                     ),
                     FaceSides::Inside => {
-                        push_quad(&mut indices, curr_j, curr_j_next, next_j, next_j_next, true)
+                        push_quad(&mut indices, curr_j, curr_j_next, next_j, next_j_next, true);
                     },
                     FaceSides::Both => {
                         push_quad(
@@ -271,83 +381,21 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &TubeMeshConfig) -> 
     }
 
     // Add caps at ends
-    let cap_rings = sides.max(8);
-
-    if point_count >= 2 {
-        match config.cap_start {
-            CapStyle::Round => {
-                let (start_normal, start_binormal) = frames[0];
-                add_hemisphere_cap(
-                    &all_points[0],
-                    &(-all_tangents[0]),
-                    &start_normal,
-                    &start_binormal,
-                    config.radius,
-                    sides,
-                    cap_rings,
-                    0,
-                    true,
-                    &mut positions,
-                    &mut normals,
-                    &mut uvs,
-                    &mut indices,
-                );
-            },
-            CapStyle::Flat { ref normal } => {
-                let dir = normal.unwrap_or(-all_tangents[0]);
-                add_flat_cap(
-                    &all_points[0],
-                    &dir,
-                    0,
-                    sides,
-                    true,
-                    &mut positions,
-                    &mut normals,
-                    &mut uvs,
-                    &mut indices,
-                );
-            },
-            CapStyle::None => {},
-        }
-
-        let last = point_count - 1;
-        let last_ring_base = (last * sides.to_usize()).to_u32();
-        match config.cap_end {
-            CapStyle::Round => {
-                let (end_normal, end_binormal) = frames[last];
-                add_hemisphere_cap(
-                    &all_points[last],
-                    &all_tangents[last],
-                    &end_normal,
-                    &end_binormal,
-                    config.radius,
-                    sides,
-                    cap_rings,
-                    last_ring_base,
-                    false,
-                    &mut positions,
-                    &mut normals,
-                    &mut uvs,
-                    &mut indices,
-                );
-            },
-            CapStyle::Flat { ref normal } => {
-                let dir = normal.unwrap_or(all_tangents[last]);
-                add_flat_cap(
-                    &all_points[last],
-                    &dir,
-                    last_ring_base,
-                    sides,
-                    false,
-                    &mut positions,
-                    &mut normals,
-                    &mut uvs,
-                    &mut indices,
-                );
-            },
-            CapStyle::None => {},
-        }
-    }
+    let mut buffers = MeshBuffers {
+        positions: &mut positions,
+        normals:   &mut normals,
+        uvs:       &mut uvs,
+        indices:   &mut indices,
+    };
+    add_end_caps(
+        &all_points,
+        &all_tangents,
+        &frames,
+        config,
+        sides,
+        point_count,
+        &mut buffers,
+    );
 
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
@@ -370,13 +418,10 @@ fn trim_path(
 
     // Trim start: remove points before trim_start distance
     if trim_start > 0.0 && points.len() >= 2 {
-        let mut cut = 0;
-        for i in 0..points.len() {
-            if arc_lengths[i] >= trim_start {
-                cut = i;
-                break;
-            }
-        }
+        let cut = arc_lengths
+            .iter()
+            .position(|&al| al >= trim_start)
+            .unwrap_or(0);
         if cut > 0 && cut < points.len() {
             // Interpolate a new start point at the trim boundary
             let prev = cut - 1;
@@ -431,13 +476,13 @@ fn trim_path(
 /// final path positions before returning, ensuring consistency with `compute_rmf`.
 fn insert_knee_rings(
     points: Vec<Vec3>,
-    _tangents: Vec<Vec3>,
     arc_lengths: Vec<f32>,
     config: &TubeMeshConfig,
 ) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
     let point_count = points.len();
     if point_count < 2 {
-        return (points, _tangents, arc_lengths);
+        let tangents = recompute_tangents(&points);
+        return (points, tangents, arc_lengths);
     }
 
     let tube_radius = config.radius;
@@ -499,7 +544,7 @@ fn insert_knee_rings(
 
         // Remove output points that overlap with the fillet's backward reach.
         while out_pts.len() > 1 {
-            let last = *out_pts.last().unwrap();
+            let last = out_pts[out_pts.len() - 1];
             if (last - fillet_start).dot(dir_in) > 0.0 {
                 out_pts.pop();
                 out_arc.pop();
@@ -522,17 +567,7 @@ fn insert_knee_rings(
         let p0 = fillet_start;
         let p3 = fillet_end;
         let max_arm = fillet_reach * 0.95;
-        let (p1_arm, p2_arm) = if let Some(ref overrides) = config.elbow_arm_overrides {
-            if let Some(&(a1, a2)) = overrides.get(elbow_idx) {
-                (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm))
-            } else {
-                let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
-                (a, a)
-            }
-        } else {
-            let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
-            (a, a)
-        };
+        let (p1_arm, p2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
         let p1 = p0 + dir_in * p1_arm;
         let p2 = p3 - dir_out * p2_arm;
         elbow_idx += 1;
@@ -542,11 +577,11 @@ fn insert_knee_rings(
             .max(3.0)
             .to_u32();
 
-        let fillet_base_arc = *out_arc.last().unwrap();
+        let fillet_base_arc = out_arc[out_arc.len() - 1];
 
         // Estimate fillet length via sampled chord distances.
         let q1 = 0.125 * (p0 + 3.0 * p1 + 3.0 * p2 + p3) - 0.0625 * (3.0 * p0 + p3);
-        let fillet_len = p0.distance(q1) * 2.0 + q1.distance(p3) * 2.0;
+        let fillet_len = p0.distance(q1).mul_add(2.0, q1.distance(p3) * 2.0);
 
         for k in 1..=num_rings {
             let t = k.to_f32() / num_rings.to_f32();
@@ -642,6 +677,7 @@ pub struct ElbowMetadata {
 /// Returns one `ElbowMetadata` per detected sharp bend, containing the four
 /// Bézier control points and constraint directions. This is useful for
 /// debug visualization and interactive editing of elbow curves.
+#[must_use]
 pub fn compute_elbow_metadata(
     geometry: &CableGeometry,
     config: &TubeMeshConfig,
@@ -656,7 +692,7 @@ pub fn compute_elbow_metadata(
             arc_offset += segment.length;
             continue;
         }
-        let start_idx = if points.is_empty() { 0 } else { 1 };
+        let start_idx = usize::from(!points.is_empty());
         for i in start_idx..segment.points.len() {
             points.push(segment.points[i]);
             arc_lengths.push(segment.arc_lengths[i] + arc_offset);
@@ -710,17 +746,7 @@ pub fn compute_elbow_metadata(
         let p0 = corner - dir_in * fillet_reach;
         let p3 = corner + dir_out * fillet_reach;
         let max_arm = fillet_reach * 0.95;
-        let (p1_arm, p2_arm) = if let Some(ref overrides) = config.elbow_arm_overrides {
-            if let Some(&(a1, a2)) = overrides.get(elbow_idx) {
-                (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm))
-            } else {
-                let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
-                (a, a)
-            }
-        } else {
-            let a = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
-            (a, a)
-        };
+        let (p1_arm, p2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
         let p1 = p0 + dir_in * p1_arm;
         let p2 = p3 - dir_out * p2_arm;
 
@@ -746,6 +772,7 @@ pub fn compute_elbow_metadata(
 /// `equator_ring_base` is the index of the first vertex in the existing tube ring
 /// that forms the equator of this hemisphere. The hemisphere sweeps from that ring
 /// toward a pole in the `cap_direction`.
+#[allow(clippy::too_many_arguments)]
 fn add_hemisphere_cap(
     center: &Vec3,
     cap_direction: &Vec3,
@@ -756,10 +783,7 @@ fn add_hemisphere_cap(
     cap_rings: u32,
     equator_ring_base: u32,
     flip_winding: bool,
-    positions: &mut Vec<[f32; 3]>,
-    normals: &mut Vec<[f32; 3]>,
-    uvs: &mut Vec<[f32; 2]>,
-    indices: &mut Vec<u32>,
+    buffers: &mut MeshBuffers,
 ) {
     let mut prev_ring_base = equator_ring_base;
 
@@ -769,7 +793,7 @@ fn add_hemisphere_cap(
         let along_offset = phi.sin() * radius;
         let ring_center = *center + *cap_direction * along_offset;
 
-        let new_ring_base = positions.len().to_u32();
+        let new_ring_base = buffers.positions.len().to_u32();
 
         for j in 0..sides {
             let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
@@ -779,9 +803,9 @@ fn add_hemisphere_cap(
             let vertex_pos = ring_center + radial * ring_radius;
             let vertex_normal = (radial * phi.cos() + *cap_direction * phi.sin()).normalize();
 
-            positions.push(vertex_pos.to_array());
-            normals.push(vertex_normal.to_array());
-            uvs.push([0.5, 0.5]);
+            buffers.positions.push(vertex_pos.to_array());
+            buffers.normals.push(vertex_normal.to_array());
+            buffers.uvs.push([0.5, 0.5]);
         }
 
         // Connect to previous ring
@@ -793,7 +817,7 @@ fn add_hemisphere_cap(
             let c = new_ring_base + j;
             let d = new_ring_base + j_next;
 
-            push_quad(indices, a, b, c, d, flip_winding);
+            push_quad(buffers.indices, a, b, c, d, flip_winding);
         }
 
         prev_ring_base = new_ring_base;
@@ -801,16 +825,16 @@ fn add_hemisphere_cap(
 
     // Pole vertex (tip of hemisphere)
     let pole_pos = *center + *cap_direction * radius;
-    let pole_idx = positions.len().to_u32();
-    positions.push(pole_pos.to_array());
-    normals.push(cap_direction.to_array());
-    uvs.push([0.5, 0.5]);
+    let pole_idx = buffers.positions.len().to_u32();
+    buffers.positions.push(pole_pos.to_array());
+    buffers.normals.push(cap_direction.to_array());
+    buffers.uvs.push([0.5, 0.5]);
 
     // Fan from last ring to pole
     for j in 0..sides {
         let j_next = (j + 1) % sides;
         push_tri(
-            indices,
+            buffers.indices,
             prev_ring_base + j,
             prev_ring_base + j_next,
             pole_idx,
@@ -829,22 +853,19 @@ fn add_flat_cap(
     ring_base: u32,
     sides: u32,
     flip_winding: bool,
-    positions: &mut Vec<[f32; 3]>,
-    normals: &mut Vec<[f32; 3]>,
-    uvs: &mut Vec<[f32; 2]>,
-    indices: &mut Vec<u32>,
+    buffers: &mut MeshBuffers,
 ) {
     // Center vertex at the tube endpoint, normal facing outward along cap direction
-    let center_idx = positions.len().to_u32();
-    positions.push(center.to_array());
-    normals.push(cap_direction.to_array());
-    uvs.push([0.5, 0.5]);
+    let center_idx = buffers.positions.len().to_u32();
+    buffers.positions.push(center.to_array());
+    buffers.normals.push(cap_direction.to_array());
+    buffers.uvs.push([0.5, 0.5]);
 
     // Triangle fan from ring to center
     for j in 0..sides {
         let j_next = (j + 1) % sides;
         push_tri(
-            indices,
+            buffers.indices,
             ring_base + j,
             ring_base + j_next,
             center_idx,
@@ -873,7 +894,7 @@ fn compute_rmf(points: &[Vec3], tangents: &[Vec3]) -> Vec<(Vec3, Vec3)> {
 
     // Propagate frames using parallel transport (double reflection method)
     for i in 1..n {
-        let (prev_normal, _prev_binormal) = frames[i - 1];
+        let (prev_normal, ..) = frames[i - 1];
         let prev_tangent = tangents[i - 1];
         let curr_tangent = tangents[i];
 

@@ -30,6 +30,7 @@ use super::types::CableSegment;
 use super::types::RouteRequest;
 
 /// Evaluate the catenary function: `a * cosh(x / a)`.
+#[must_use]
 pub fn evaluate(x: f32, a: f32) -> f32 { a * (x / a).cosh() }
 
 /// Solve for the catenary parameter `a` given horizontal distance, vertical distance,
@@ -38,13 +39,14 @@ pub fn evaluate(x: f32, a: f32) -> f32 { a * (x / a).cosh() }
 /// The cable length `L` must satisfy `L > sqrt(h^2 + v^2)` (longer than the straight line).
 ///
 /// Returns `None` if the problem is degenerate or Newton's method fails to converge.
+#[must_use]
 pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f32) -> Option<f32> {
     let horiz = horizontal_dist.abs();
     let vert = vertical_dist;
     let length = cable_length;
 
     // Cable must be longer than straight-line distance
-    let straight = (horiz * horiz + vert * vert).sqrt();
+    let straight = horiz.hypot(vert);
     if length <= straight + MIN_SEGMENT_LENGTH {
         return None;
     }
@@ -57,7 +59,7 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
     // We need to solve: L^2 - v^2 = (2a * sinh(h / (2a)))^2
     // Let f(a) = 2a * sinh(h/(2a)) - sqrt(L^2 - v^2)
     // Newton: a_{n+1} = a_n - f(a_n) / f'(a_n)
-    let target = (length * length - vert * vert).sqrt();
+    let target = length.mul_add(length, -(vert * vert)).sqrt();
 
     // Initial guess: start with a = horiz (reasonable for moderate sag)
     let mut param = horiz;
@@ -71,9 +73,9 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
         let sinh_val = half_h_over_a.sinh();
         let cosh_val = half_h_over_a.cosh();
 
-        let residual = 2.0 * param * sinh_val - target;
+        let residual = (2.0 * param).mul_add(sinh_val, -target);
         // f'(a) = 2*sinh(h/(2a)) - (h/a)*cosh(h/(2a))
-        let f_prime = 2.0 * sinh_val - (horiz / param) * cosh_val;
+        let f_prime = 2.0f32.mul_add(sinh_val, -(horiz / param) * cosh_val);
 
         if f_prime.abs() < f32::EPSILON {
             // Derivative too small, can't continue
@@ -97,6 +99,7 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
 /// The curve sags in the direction of `gravity_dir` (should be normalized).
 /// `slack` is the ratio of cable length to straight-line distance (1.0 = taut).
 /// `resolution` is the number of sample points (minimum 2).
+#[must_use]
 pub fn sample_3d(
     start: Vec3,
     end: Vec3,
@@ -139,9 +142,9 @@ pub fn sample_3d(
     let h_axis = horizontal_vec / horizontal_dist;
 
     // Solve for catenary parameter
-    let catenary_a = match solve_parameter(horizontal_dist, vertical_component, cable_length) {
-        Some(a) => a,
-        None => return sample_parabolic_fallback(start, end, gravity_norm, slack, n),
+    let Some(catenary_a) = solve_parameter(horizontal_dist, vertical_component, cable_length)
+    else {
+        return sample_parabolic_fallback(start, end, gravity_norm, slack, n);
     };
 
     // The 2D catenary: y = a * cosh((x - x_offset) / a) + y_offset
@@ -152,7 +155,10 @@ pub fn sample_3d(
     let half_h = horizontal_dist / 2.0;
     let sinh_half_h_a = (half_h / catenary_a).sinh();
     let x_offset = if sinh_half_h_a.abs() > f32::EPSILON {
-        half_h - catenary_a * (vertical_component / (2.0 * catenary_a * sinh_half_h_a)).asinh()
+        catenary_a.mul_add(
+            -(vertical_component / (2.0 * catenary_a * sinh_half_h_a)).asinh(),
+            half_h,
+        )
     } else {
         half_h
     };
@@ -167,7 +173,7 @@ pub fn sample_3d(
     for i in 0..n {
         let t = i.to_f32() / (n - 1).to_f32();
         let x_2d = t * horizontal_dist;
-        let y_2d = catenary_a * ((x_2d - x_offset) / catenary_a).cosh() + y_offset;
+        let y_2d = catenary_a.mul_add(((x_2d - x_offset) / catenary_a).cosh(), y_offset);
 
         // Map back to 3D: horizontal position + vertical sag
         let point = start + x_2d * h_axis + y_2d * gravity_norm;

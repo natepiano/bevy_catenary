@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! Comprehensive tests for the `bevy_catenary` routing module.
 
 use bevy::math::Vec3;
@@ -16,6 +17,7 @@ use bevy_catenary::Router;
 use bevy_catenary::evaluate;
 use bevy_catenary::sample_3d;
 use bevy_catenary::solve_parameter;
+use bevy_kana::ToF32;
 
 const TOLERANCE: f32 = 0.01;
 
@@ -64,7 +66,7 @@ fn solve_parameter_converges_for_asymmetric_endpoints() {
     // A converged catenary should sag below the straight line between endpoints.
     let mid_idx = segment.points.len() / 2;
     let mid_y = segment.points[mid_idx].y;
-    let chord_mid_y = (start.y + end.y) / 2.0;
+    let chord_mid_y = f32::midpoint(start.y, end.y);
     assert!(
         mid_y < chord_mid_y,
         "midpoint y ({mid_y}) should sag below chord midpoint y ({chord_mid_y})"
@@ -147,7 +149,7 @@ fn sample_3d_slack_one_gives_nearly_straight_line() {
     // that accounts for the fallback's minimum sag factor).
     let nearly_straight_tolerance = 0.15;
     for (i, point) in segment.points.iter().enumerate() {
-        let t = i as f32 / (segment.points.len() - 1) as f32;
+        let t = i.to_f32() / (segment.points.len() - 1).to_f32();
         let expected = start.lerp(end, t);
         let dist = point.distance(expected);
         assert!(
@@ -169,7 +171,7 @@ fn sample_3d_high_slack_produces_visible_sag() {
     // should be below that line.
     let mid_idx = segment.points.len() / 2;
     let mid_y = segment.points[mid_idx].y;
-    let chord_mid_y = (start.y + end.y) / 2.0;
+    let chord_mid_y = f32::midpoint(start.y, end.y);
 
     assert!(
         mid_y < chord_mid_y - 0.1,
@@ -387,7 +389,7 @@ fn linear_solver_produces_straight_line() {
     let segment = solver.solve_segment(start, end, 10);
 
     for (i, point) in segment.points.iter().enumerate() {
-        let t = i as f32 / (segment.points.len() - 1) as f32;
+        let t = i.to_f32() / (segment.points.len() - 1).to_f32();
         let expected = start.lerp(end, t);
         assert_vec3_approx(*point, expected, &format!("linear point {i}"));
     }

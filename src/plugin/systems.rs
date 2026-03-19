@@ -175,12 +175,8 @@ fn draw_dot(gizmos: &mut Gizmos<CableGizmoGroup>, point: Vec3, color: Color) {
 }
 
 /// Resource that toggles detailed debug visualization.
-#[derive(Resource)]
+#[derive(Default, Resource)]
 pub struct CableDebugEnabled(pub bool);
-
-impl Default for CableDebugEnabled {
-    fn default() -> Self { Self(false) }
-}
 
 /// Observer that handles endpoint detachment when a target entity is despawned.
 ///
