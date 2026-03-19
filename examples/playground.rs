@@ -42,12 +42,10 @@ use bevy_catenary::DetachPolicy;
 use bevy_catenary::Obstacle;
 use bevy_catenary::Planner;
 use bevy_catenary::Solver;
-use bevy_catenary::generate_tube_mesh;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
-use bevy_kana::ToI32;
 use bevy_panorbit_camera::PanOrbitCamera;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use bevy_panorbit_camera::TrackpadBehavior;
@@ -144,16 +142,11 @@ struct DragState {
 }
 
 #[derive(Component)]
-struct CableMeshSpawned;
-
-#[derive(Component)]
 struct Selected;
 
+/// Shared cable material handle for all cable meshes.
 #[derive(Resource)]
-struct CableMaterial(Handle<StandardMaterial>);
-
-#[derive(Component)]
-struct HubSphere;
+struct SharedCableMaterial(Handle<StandardMaterial>);
 
 #[derive(Component)]
 struct NodeCube;
@@ -189,7 +182,7 @@ struct InspectorVisible(bool);
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
-struct CableTuneSettings {
+struct CableSettings {
     #[inspector(min = 0.01, max = 0.3, display = NumberDisplay::Slider)]
     tube_radius:                  f32,
     #[inspector(min = 3, max = 32, display = NumberDisplay::Slider)]
@@ -210,7 +203,7 @@ struct CableTuneSettings {
     elbow_arm_multiplier:         f32,
 }
 
-impl Default for CableTuneSettings {
+impl Default for CableSettings {
     fn default() -> Self {
         Self {
             tube_radius:                  TUBE_RADIUS,
@@ -246,10 +239,10 @@ fn main() {
             MeshPickingPlugin,
             BrpExtrasPlugin::default(),
             CatenaryPlugin,
-            ResourceInspectorPlugin::<CableTuneSettings>::default()
+            ResourceInspectorPlugin::<CableSettings>::default()
                 .run_if(|visible: Res<InspectorVisible>| visible.0),
         ))
-        .init_resource::<CableTuneSettings>()
+        .init_resource::<CableSettings>()
         .init_resource::<InspectorVisible>()
         .init_resource::<DragState>()
         .insert_resource(CurrentSection(0))
@@ -261,13 +254,10 @@ fn main() {
             Update,
             (
                 frame_initial_section,
-                rebuild_on_geometry_change,
-                generate_cable_meshes,
-                rebuild_on_geometry_change,
                 handle_keyboard,
                 handle_nav_buttons,
                 handle_drag,
-                rebuild_on_settings_change.run_if(resource_changed::<CableTuneSettings>),
+                sync_cable_settings.run_if(resource_changed::<CableSettings>),
             ),
         )
         .run();
@@ -375,7 +365,7 @@ fn setup_sections(
         base_color: CABLE_COLOR,
         ..default()
     });
-    commands.insert_resource(CableMaterial(cable_mat));
+    commands.insert_resource(SharedCableMaterial(cable_mat.clone()));
 
     let node_mesh = meshes.add(Cuboid::new(
         NODE_CUBE_SIZE * 2.0,
@@ -396,7 +386,7 @@ fn setup_sections(
         &mut materials,
         SECTION_X[0],
     ));
-    setup_section_catenary(&mut commands, &node_mesh, &node_mat);
+    setup_section_catenary(&mut commands, &node_mesh, &node_mat, &cable_mat);
 
     bounds.push(spawn_section_bounds(
         &mut commands,
@@ -404,7 +394,7 @@ fn setup_sections(
         &mut materials,
         SECTION_X[1],
     ));
-    setup_section_cap_styles(&mut commands, &node_mesh, &node_mat);
+    setup_section_cap_styles(&mut commands, &node_mesh, &node_mat, &cable_mat);
 
     bounds.push(spawn_section_bounds(
         &mut commands,
@@ -412,7 +402,7 @@ fn setup_sections(
         &mut materials,
         SECTION_X[2],
     ));
-    setup_section_solver_comparison(&mut commands, &node_mesh, &node_mat);
+    setup_section_solver_comparison(&mut commands, &node_mesh, &node_mat, &cable_mat);
 
     bounds.push(spawn_section_bounds(
         &mut commands,
@@ -420,7 +410,7 @@ fn setup_sections(
         &mut materials,
         SECTION_X[3],
     ));
-    setup_section_entity_attachment(&mut commands, &mut meshes, &mut materials);
+    setup_section_entity_attachment(&mut commands, &mut meshes, &mut materials, &cable_mat);
 
     bounds.push(spawn_section_bounds(
         &mut commands,
@@ -434,6 +424,7 @@ fn setup_sections(
         &mut materials,
         &node_mesh,
         &node_mat,
+        &cable_mat,
     );
 
     bounds.push(spawn_section_bounds(
@@ -448,6 +439,7 @@ fn setup_sections(
         &mut materials,
         &node_mesh,
         &node_mat,
+        &cable_mat,
     );
 
     bounds.push(spawn_section_bounds(
@@ -462,6 +454,7 @@ fn setup_sections(
         &mut materials,
         &node_mesh,
         &node_mat,
+        &cable_mat,
     );
 
     bounds.push(spawn_section_bounds(
@@ -470,7 +463,7 @@ fn setup_sections(
         &mut materials,
         SECTION_X[7],
     ));
-    setup_section_inside_view(&mut commands);
+    setup_section_inside_view(&mut commands, &cable_mat);
 
     commands.insert_resource(SectionBounds(bounds));
 }
@@ -480,6 +473,7 @@ fn setup_section_catenary(
     commands: &mut Commands,
     node_mesh: &Handle<Mesh>,
     node_mat: &Handle<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[0];
     let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
@@ -491,6 +485,7 @@ fn setup_section_catenary(
         end,
         Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
         vec![],
+        &cable_mat,
     );
 }
 
@@ -499,6 +494,7 @@ fn setup_section_cap_styles(
     commands: &mut Commands,
     node_mesh: &Handle<Mesh>,
     node_mat: &Handle<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[1];
     for (z, start_cap, end_cap, _label) in [
@@ -517,6 +513,7 @@ fn setup_section_cap_styles(
             vec![],
             start_cap,
             end_cap,
+            cable_mat,
         );
     }
 }
@@ -526,6 +523,7 @@ fn setup_section_solver_comparison(
     commands: &mut Commands,
     node_mesh: &Handle<Mesh>,
     node_mat: &Handle<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[2];
 
@@ -539,13 +537,14 @@ fn setup_section_solver_comparison(
         end,
         Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
         vec![],
+        cable_mat,
     );
 
     // Linear
     let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
     let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
     spawn_node_pair(commands, node_mesh, node_mat, start, end);
-    spawn_cable(commands, start, end, Solver::Linear, vec![]);
+    spawn_cable(commands, start, end, Solver::Linear, vec![], cable_mat);
 
     // Orthogonal
     let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y - 0.5, 1.5);
@@ -561,6 +560,7 @@ fn setup_section_solver_comparison(
             resolution: 0,
         },
         vec![],
+        cable_mat,
     );
 }
 
@@ -569,6 +569,7 @@ fn setup_section_entity_attachment(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[3];
     let drag_mesh = meshes.add(Cuboid::new(
@@ -604,11 +605,17 @@ fn setup_section_entity_attachment(
         .id();
 
     commands
-        .spawn(Cable {
-            solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
-            obstacles:  vec![],
-            resolution: 0,
-        })
+        .spawn((
+            Cable {
+                solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            CableMeshConfig {
+                material: Some(cable_mat.clone()),
+                ..default()
+            },
+        ))
         .with_children(|parent| {
             parent.spawn((
                 CableEndpoint::new(CableEnd::Start, Vec3::ZERO),
@@ -628,6 +635,7 @@ fn setup_section_shared_hub(
     materials: &mut Assets<StandardMaterial>,
     node_mesh: &Handle<Mesh>,
     node_mat: &Handle<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[4];
     let drag_mesh = meshes.add(Sphere::new(0.35).mesh().uv(16, 16));
@@ -656,11 +664,17 @@ fn setup_section_shared_hub(
     for spoke_pos in spokes {
         spawn_node_cube(commands, node_mesh, node_mat, spoke_pos);
         commands
-            .spawn(Cable {
-                solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
-                obstacles:  vec![],
-                resolution: 0,
-            })
+            .spawn((
+                Cable {
+                    solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+                    obstacles:  vec![],
+                    resolution: 0,
+                },
+                CableMeshConfig {
+                    material: Some(cable_mat.clone()),
+                    ..default()
+                },
+            ))
             .with_children(|parent| {
                 parent.spawn((
                     CableEndpoint::new(CableEnd::Start, Vec3::ZERO),
@@ -678,6 +692,7 @@ fn setup_section_astar(
     materials: &mut Assets<StandardMaterial>,
     node_mesh: &Handle<Mesh>,
     node_mat: &Handle<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[5];
     let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
@@ -696,6 +711,7 @@ fn setup_section_astar(
             resolution: 0,
         },
         vec![obstacle],
+        cable_mat,
     );
 
     // Obstacle box
@@ -718,7 +734,7 @@ fn setup_section_astar(
 }
 
 /// Section 7: Inside view — large tube rendered inside-only.
-fn setup_section_inside_view(commands: &mut Commands) {
+fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<StandardMaterial>) {
     let cx = SECTION_X[7];
     // Tube angled to match the camera's viewing angle (yaw ~-0.48, pitch ~0.5).
     // The near opening faces the camera; the tube extends away and slightly down-left.
@@ -733,6 +749,13 @@ fn setup_section_inside_view(commands: &mut Commands) {
                 solver:     Solver::Linear,
                 obstacles:  vec![],
                 resolution: 0,
+            },
+            CableMeshConfig {
+                radius: 1.5,
+                sides: 64,
+                face_sides: bevy_catenary::FaceSides::Both,
+                material: Some(cable_mat.clone()),
+                ..default()
             },
             InsideViewCable,
         ))
@@ -749,6 +772,7 @@ fn spawn_detach_demo(
     materials: &mut Assets<StandardMaterial>,
     node_mesh: &Handle<Mesh>,
     node_mat: &Handle<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[6];
     let sphere_mesh = meshes.add(Sphere::new(0.35).mesh().uv(16, 16));
@@ -778,6 +802,10 @@ fn spawn_detach_demo(
                 solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
                 obstacles:  vec![],
                 resolution: 0,
+            },
+            CableMeshConfig {
+                material: Some(cable_mat.clone()),
+                ..default()
             },
             DetachDemoEntity,
         ))
@@ -814,6 +842,10 @@ fn spawn_detach_demo(
                 solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
                 obstacles:  vec![],
                 resolution: 0,
+            },
+            CableMeshConfig {
+                material: Some(cable_mat.clone()),
+                ..default()
             },
             DetachDemoEntity,
         ))
@@ -1001,13 +1033,20 @@ fn spawn_cable(
     end: Vec3,
     solver: Solver,
     obstacles: Vec<Obstacle>,
+    material: &Handle<StandardMaterial>,
 ) {
     commands
-        .spawn(Cable {
-            solver,
-            obstacles,
-            resolution: 0,
-        })
+        .spawn((
+            Cable {
+                solver,
+                obstacles,
+                resolution: 0,
+            },
+            CableMeshConfig {
+                material: Some(material.clone()),
+                ..default()
+            },
+        ))
         .with_children(|parent| {
             parent.spawn(CableEndpoint::new(CableEnd::Start, start));
             parent.spawn(CableEndpoint::new(CableEnd::End, end));
@@ -1022,13 +1061,20 @@ fn spawn_cable_with_caps(
     obstacles: Vec<Obstacle>,
     cap_start: CapStyle,
     cap_end: CapStyle,
+    material: &Handle<StandardMaterial>,
 ) {
     commands
-        .spawn(Cable {
-            solver,
-            obstacles,
-            resolution: 0,
-        })
+        .spawn((
+            Cable {
+                solver,
+                obstacles,
+                resolution: 0,
+            },
+            CableMeshConfig {
+                material: Some(material.clone()),
+                ..default()
+            },
+        ))
         .with_children(|parent| {
             parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(cap_start));
             parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(cap_end));
@@ -1255,182 +1301,26 @@ fn on_despawnable_clicked(click: On<Pointer<Click>>, mut commands: Commands) {
 // Runtime systems
 // ============================================================================
 
-fn generate_cable_meshes(
+/// Sync `CableSettings` resource to each cable's `CableMeshConfig` when the inspector changes
+/// values.
+fn sync_cable_settings(
+    settings: Res<CableSettings>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    cable_material: Option<Res<CableMaterial>>,
-    settings: Res<CableTuneSettings>,
-    cables: Query<
-        (
-            Entity,
-            &ComputedCableGeometry,
-            &Children,
-            Has<InsideViewCable>,
-        ),
-        Without<CableMeshSpawned>,
-    >,
-    endpoints: Query<&CableEndpoint>,
+    cables: Query<(Entity, &CableMeshConfig, &ComputedCableGeometry), With<Cable>>,
 ) {
-    let Some(cable_material) = cable_material else {
-        return;
-    };
-
-    let mut endpoint_counts: std::collections::HashMap<[i32; 3], u32> =
-        std::collections::HashMap::new();
-    for (_entity, _computed, children, _) in &cables {
-        for child in children.iter() {
-            if let Ok(ep) = endpoints.get(child) {
-                let key = quantize_position(ep.offset);
-                *endpoint_counts.entry(key).or_default() += 1;
-            }
-        }
-    }
-
-    let joint_radius = settings.tube_radius * settings.joint_radius_multiplier;
-    let trim_distance = joint_radius;
-    let joint_mesh = meshes.add(Sphere::new(joint_radius).mesh().uv(
-        settings.joint_sphere_segments,
-        settings.joint_sphere_segments,
-    ));
-
-    let mut hub_spawned: std::collections::HashSet<[i32; 3]> = std::collections::HashSet::new();
-
-    for (entity, computed, children, is_inside_view) in &cables {
-        let Some(geometry) = &computed.geometry else {
-            continue;
-        };
-
-        let mut start_cap = CapStyle::Round;
-        let mut end_cap = CapStyle::Round;
-        let mut start_pos = None;
-        let mut end_pos = None;
-        for child in children.iter() {
-            if let Ok(ep) = endpoints.get(child) {
-                match ep.end {
-                    CableEnd::Start => {
-                        start_cap = ep.cap_style.clone();
-                        start_pos = Some(ep.offset);
-                    },
-                    CableEnd::End => {
-                        end_cap = ep.cap_style.clone();
-                        end_pos = Some(ep.offset);
-                    },
-                }
-            }
-        }
-
-        let start_key = start_pos.map(quantize_position);
-        let end_key = end_pos.map(quantize_position);
-        let start_shared = start_key
-            .and_then(|k| endpoint_counts.get(&k).copied())
-            .unwrap_or(0)
-            > 1;
-        let end_shared = end_key
-            .and_then(|k| endpoint_counts.get(&k).copied())
-            .unwrap_or(0)
-            > 1;
-
-        let config = CableMeshConfig {
-            radius:                       if is_inside_view {
-                1.5
-            } else {
-                settings.tube_radius
-            },
-            sides:                        if is_inside_view {
-                64
-            } else {
-                settings.tube_sides
-            },
-            cap_start:                    if start_shared {
-                CapStyle::None
-            } else {
-                start_cap
-            },
-            cap_end:                      if end_shared { CapStyle::None } else { end_cap },
-            trim_start:                   if start_shared { trim_distance } else { 0.0 },
-            trim_end:                     if end_shared { trim_distance } else { 0.0 },
-            elbow_bend_radius_multiplier: settings.elbow_bend_radius_multiplier,
-            elbow_min_radius_multiplier:  settings.elbow_min_radius_multiplier,
-            elbow_rings_per_right_angle:  settings.elbow_rings_per_right_angle,
-            elbow_angle_threshold_deg:    settings.elbow_angle_threshold_deg,
-            elbow_arm_multiplier:         settings.elbow_arm_multiplier,
-            elbow_arm_overrides:          None,
-            face_sides:                   if is_inside_view {
-                bevy_catenary::FaceSides::Both
-            } else {
-                bevy_catenary::FaceSides::default()
-            },
-            material:                     Some(cable_material.0.clone()),
-        };
-
-        let mesh = generate_tube_mesh(geometry, &config);
-        let mesh_handle = meshes.add(mesh);
-
+    for (entity, config, computed) in &cables {
+        let mut new_config = config.clone();
+        new_config.radius = settings.tube_radius;
+        new_config.sides = settings.tube_sides;
+        new_config.elbow_bend_radius_multiplier = settings.elbow_bend_radius_multiplier;
+        new_config.elbow_min_radius_multiplier = settings.elbow_min_radius_multiplier;
+        new_config.elbow_rings_per_right_angle = settings.elbow_rings_per_right_angle;
+        new_config.elbow_angle_threshold_deg = settings.elbow_angle_threshold_deg;
+        new_config.elbow_arm_multiplier = settings.elbow_arm_multiplier;
+        // Re-insert both to trigger the mesh rebuild observer
         commands
-            .spawn((
-                Mesh3d(mesh_handle),
-                MeshMaterial3d(cable_material.0.clone()),
-                ChildOf(entity),
-            ))
-            .observe(on_mesh_clicked);
-
-        if let (true, Some(key), Some(pos)) = (start_shared, start_key, start_pos)
-            && hub_spawned.insert(key)
-        {
-            commands.spawn((
-                Mesh3d(joint_mesh.clone()),
-                MeshMaterial3d(cable_material.0.clone()),
-                Transform::from_translation(pos),
-                HubSphere,
-            ));
-        }
-        if let (true, Some(key), Some(pos)) = (end_shared, end_key, end_pos)
-            && hub_spawned.insert(key)
-        {
-            commands.spawn((
-                Mesh3d(joint_mesh.clone()),
-                MeshMaterial3d(cable_material.0.clone()),
-                Transform::from_translation(pos),
-                HubSphere,
-            ));
-        }
-
-        commands.entity(entity).insert(CableMeshSpawned);
-    }
-}
-
-/// When cable geometry is recomputed (e.g., endpoint moved), remove old mesh so it regenerates.
-fn rebuild_on_geometry_change(
-    mut commands: Commands,
-    changed_cables: Query<Entity, (Changed<ComputedCableGeometry>, With<CableMeshSpawned>)>,
-    mesh_children: Query<(Entity, &ChildOf), With<Mesh3d>>,
-) {
-    for cable_entity in &changed_cables {
-        commands.entity(cable_entity).remove::<CableMeshSpawned>();
-        for (child_entity, child_of) in &mesh_children {
-            if child_of.parent() == cable_entity {
-                commands.entity(child_entity).despawn();
-            }
-        }
-    }
-}
-
-fn rebuild_on_settings_change(
-    mut commands: Commands,
-    cable_meshes: Query<Entity, With<CableMeshSpawned>>,
-    hub_spheres: Query<Entity, With<HubSphere>>,
-    mesh_children: Query<(Entity, &ChildOf), With<Mesh3d>>,
-) {
-    for entity in &hub_spheres {
-        commands.entity(entity).despawn();
-    }
-    for entity in &cable_meshes {
-        commands.entity(entity).remove::<CableMeshSpawned>();
-    }
-    for (child_entity, child_of) in &mesh_children {
-        if cable_meshes.get(child_of.parent()).is_ok() {
-            commands.entity(child_entity).despawn();
-        }
+            .entity(entity)
+            .insert((new_config, computed.clone()));
     }
 }
 
@@ -1442,6 +1332,7 @@ fn handle_keyboard(
     mut inspector_visible: ResMut<InspectorVisible>,
     mut node_cubes: Query<&mut Visibility, With<NodeCube>>,
     // Reset detach demo
+    shared_cable_mat: Res<SharedCableMaterial>,
     detach_entities: Query<Entity, With<DetachDemoEntity>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1479,7 +1370,14 @@ fn handle_keyboard(
         }
 
         if let (Some(nm), Some(nmat)) = (node_mesh, node_mat) {
-            spawn_detach_demo(&mut commands, &mut meshes, &mut materials, &nm, &nmat);
+            spawn_detach_demo(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                &nm,
+                &nmat,
+                &shared_cable_mat.0,
+            );
         }
     }
 }
@@ -1527,18 +1425,4 @@ fn on_ground_clicked(
             .duration(Duration::from_millis(ZOOM_DURATION_MS))
             .easing(EaseFunction::CubicOut),
     );
-}
-
-// ============================================================================
-// Utilities
-// ============================================================================
-
-const QUANTIZE_SCALE: f32 = 1000.0;
-
-fn quantize_position(pos: Vec3) -> [i32; 3] {
-    [
-        (pos.x * QUANTIZE_SCALE).round().to_i32(),
-        (pos.y * QUANTIZE_SCALE).round().to_i32(),
-        (pos.z * QUANTIZE_SCALE).round().to_i32(),
-    ]
 }

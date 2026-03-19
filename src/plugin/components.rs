@@ -114,7 +114,7 @@ pub struct Cable {
 /// Computed cable geometry, populated by the `compute_cable_routes` system.
 ///
 /// Rendering systems read from this component.
-#[derive(Component, Default)]
+#[derive(Component, Clone, Default)]
 pub struct ComputedCableGeometry {
     /// The computed geometry, or `None` if not yet computed.
     pub geometry: Option<CableGeometry>,
