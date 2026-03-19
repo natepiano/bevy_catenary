@@ -23,8 +23,8 @@ use std::time::Duration;
 
 use bevy::light::NotShadowCaster;
 use bevy::math::curve::easing::EaseFunction;
-use bevy::picking::Pickable;
 use bevy::picking::mesh_picking::MeshPickingPlugin;
+use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy_brp_extras::BrpExtrasPlugin;
 use bevy_catenary::AttachedTo;
@@ -137,8 +137,10 @@ struct SectionBounds(Vec<Entity>);
 
 #[derive(Resource, Default)]
 struct DragState {
-    entity:   Option<Entity>,
-    y_height: f32,
+    entity:      Option<Entity>,
+    y_height:    f32,
+    /// Offset from the cursor hit point to the entity center (XZ only).
+    grab_offset: Vec2,
 }
 
 #[derive(Component)]
@@ -333,7 +335,8 @@ fn setup_scene(
         .spawn((
             Mesh3d(meshes.add(Plane3d::default().mesh().size(GROUND_WIDTH, GROUND_DEPTH))),
             MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.3, 0.5, 0.3),
+                base_color: Color::srgba(0.2, 0.9, 0.2, 0.09),
+                alpha_mode: AlphaMode::Blend,
                 double_sided: true,
                 cull_mode: None,
                 ..default()
@@ -1269,8 +1272,8 @@ fn handle_drag(
     let hit = ray.origin + ray.direction * t;
 
     if let Ok(mut transform) = draggables.get_mut(dragged) {
-        transform.translation.x = hit.x;
-        transform.translation.z = hit.z;
+        transform.translation.x = hit.x + drag_state.grab_offset.x;
+        transform.translation.z = hit.z + drag_state.grab_offset.y;
     }
 }
 
@@ -1278,15 +1281,43 @@ fn on_drag_start(
     click: On<Pointer<Press>>,
     mut drag_state: ResMut<DragState>,
     transforms: Query<&Transform, With<Draggable>>,
+    cameras: Query<(&Camera, &GlobalTransform)>,
+    windows: Query<&Window>,
 ) {
     if click.button != PointerButton::Primary {
         return;
     }
     let entity = click.entity;
-    if let Ok(tf) = transforms.get(entity) {
-        drag_state.entity = Some(entity);
-        drag_state.y_height = tf.translation.y;
+    let Ok(tf) = transforms.get(entity) else {
+        return;
+    };
+    drag_state.entity = Some(entity);
+    drag_state.y_height = tf.translation.y;
+    drag_state.grab_offset = Vec2::ZERO;
+
+    // Raycast the cursor to the entity's Y-plane to get a consistent grab offset
+    let Ok((camera, cam_tf)) = cameras.single() else {
+        return;
+    };
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
+    let Ok(ray) = camera.viewport_to_world(cam_tf, cursor) else {
+        return;
+    };
+    let denom = ray.direction.y;
+    if denom.abs() < 1e-6 {
+        return;
     }
+    let t = (tf.translation.y - ray.origin.y) / denom;
+    if t < 0.0 {
+        return;
+    }
+    let hit = ray.origin + ray.direction * t;
+    drag_state.grab_offset = Vec2::new(tf.translation.x - hit.x, tf.translation.z - hit.z);
 }
 
 // ============================================================================
@@ -1306,7 +1337,10 @@ fn on_despawnable_clicked(click: On<Pointer<Click>>, mut commands: Commands) {
 fn sync_cable_settings(
     settings: Res<CableSettings>,
     mut commands: Commands,
-    cables: Query<(Entity, &CableMeshConfig, &ComputedCableGeometry), With<Cable>>,
+    cables: Query<
+        (Entity, &CableMeshConfig, &ComputedCableGeometry),
+        (With<Cable>, Without<InsideViewCable>),
+    >,
 ) {
     for (entity, config, computed) in &cables {
         let mut new_config = config.clone();
