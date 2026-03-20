@@ -23,6 +23,7 @@ use super::constants::MAX_NEWTON_ITERATIONS;
 use super::constants::MIN_CATENARY_PARAM;
 use super::constants::MIN_SEGMENT_LENGTH;
 use super::constants::NEWTON_TOLERANCE;
+use super::constants::STRAIGHT_LINE_THRESHOLD;
 use super::solver::CurveSolver;
 use super::solver::RouteSolver;
 use super::types::CableGeometry;
@@ -61,8 +62,16 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
     // Newton: a_{n+1} = a_n - f(a_n) / f'(a_n)
     let target = length.mul_add(length, -(vert * vert)).sqrt();
 
-    // Initial guess: start with a = horiz (reasonable for moderate sag)
-    let mut param = horiz;
+    // Initial guess using the large-`a` approximation:
+    // 2a*sinh(h/(2a)) ≈ h + h³/(24a²) = target  →  a = h * sqrt(h / (24*(target - h)))
+    // This is far more stable than `a = h` which puts us near a zero of f'(a).
+    let excess = target - horiz;
+    let mut param = if excess > MIN_SEGMENT_LENGTH {
+        horiz * (horiz / (24.0 * excess)).sqrt()
+    } else {
+        // target ≈ h means near-taut cable; start with a large `a`
+        horiz * 10.0
+    };
 
     for _ in 0..MAX_NEWTON_ITERATIONS {
         if param < MIN_CATENARY_PARAM {
@@ -78,7 +87,6 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
         let f_prime = 2.0f32.mul_add(sinh_val, -(horiz / param) * cosh_val);
 
         if f_prime.abs() < f32::EPSILON {
-            // Derivative too small, can't continue
             break;
         }
 
@@ -116,8 +124,14 @@ pub fn sample_3d(
         return CableSegment::from_points(vec![start; n]);
     }
 
-    let cable_length = chord_length * slack.max(1.0);
+    let clamped_slack = slack.max(1.0);
+    let cable_length = chord_length * clamped_slack;
     let gravity_norm = gravity_dir.normalize_or_zero();
+
+    // Near-taut cables degrade gracefully to a straight line
+    if clamped_slack < STRAIGHT_LINE_THRESHOLD {
+        return sample_straight_line(start, end, n);
+    }
 
     // If gravity is zero, fall back to straight line
     if gravity_norm.length_squared() < 0.5 {
@@ -144,7 +158,7 @@ pub fn sample_3d(
     // Solve for catenary parameter
     let Some(catenary_a) = solve_parameter(horizontal_dist, vertical_component, cable_length)
     else {
-        return sample_parabolic_fallback(start, end, gravity_norm, slack, n);
+        return sample_parabolic_fallback(start, end, gravity_norm, clamped_slack, n);
     };
 
     // The 2D catenary: y = a * cosh((x - x_offset) / a) + y_offset
@@ -167,6 +181,9 @@ pub fn sample_3d(
     let y_at_start = catenary_a * ((0.0 - x_offset) / catenary_a).cosh();
     let y_offset = -y_at_start;
 
+    // y_2d at the end point — needed to separate the linear height change from sag
+    let y_2d_end = catenary_a.mul_add(((horizontal_dist - x_offset) / catenary_a).cosh(), y_offset);
+
     // Sample points along the 2D catenary and map back to 3D
     let mut points = Vec::with_capacity(n);
 
@@ -175,8 +192,13 @@ pub fn sample_3d(
         let x_2d = t * horizontal_dist;
         let y_2d = catenary_a.mul_add(((x_2d - x_offset) / catenary_a).cosh(), y_offset);
 
-        // Map back to 3D: horizontal position + vertical sag
-        let point = start + x_2d * h_axis + y_2d * gravity_norm;
+        // `y_2d` encodes two things: the linear height change between endpoints
+        // and the catenary sag. We need them mapped with opposite signs:
+        //   - linear part: along gravity (preserves endpoint positions)
+        //   - sag part: against gravity (cable hangs downward)
+        let y_linear = t * y_2d_end;
+        let y_sag = y_2d - y_linear;
+        let point = start + x_2d * h_axis + (y_linear - y_sag) * gravity_norm;
         points.push(point);
     }
 
@@ -237,7 +259,7 @@ fn sample_parabolic_fallback(
 ) -> CableSegment {
     let chord = end - start;
     let chord_length = chord.length();
-    let sag = chord_length * (slack - 1.0).max(0.05) * 0.5;
+    let sag = chord_length * (slack - 1.0).max(0.0) * 0.5;
 
     let mut points = Vec::with_capacity(n);
     for i in 0..n {

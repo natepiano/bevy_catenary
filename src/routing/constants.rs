@@ -29,3 +29,6 @@ pub const NEWTON_TOLERANCE: f32 = 1e-6;
 
 /// Minimum catenary parameter to avoid division by near-zero.
 pub const MIN_CATENARY_PARAM: f32 = 1e-4;
+
+/// Slack values below this degrade to a straight line instead of attempting a catenary solve.
+pub const STRAIGHT_LINE_THRESHOLD: f32 = 1.005;

@@ -162,7 +162,7 @@ impl Default for CableMeshConfig {
     fn default() -> Self {
         Self {
             radius:                       0.06,
-            sides:                        16,
+            sides:                        32,
             cap_start:                    CapStyle::Round,
             cap_end:                      CapStyle::Round,
             trim_start:                   0.0,

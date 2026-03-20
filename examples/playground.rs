@@ -15,7 +15,6 @@
 //! - D: Toggle debug gizmos
 //! - H: Home -zoom to fit entire scene
 //! - I: Toggle inspector
-//! - N: Toggle node cubes
 //! - R: Reset detach demo (section 6)
 
 use std::f32::consts::PI;
@@ -57,7 +56,7 @@ use bevy_panorbit_camera_ext::ZoomToFit;
 // Layout -7 sections spread along X
 // ============================================================================
 
-const SECTION_COUNT: usize = 8;
+const SECTION_COUNT: usize = 9;
 const SECTION_SPACING: f32 = 16.0;
 const NODE_Y: f32 = 2.0;
 const SPAN_HALF_X: f32 = 3.0;
@@ -65,14 +64,15 @@ const NODE_CUBE_SIZE: f32 = 0.3;
 const DRAGGABLE_CUBE_SIZE: f32 = 0.45;
 
 const SECTION_X: [f32; SECTION_COUNT] = [
-    -3.5 * SECTION_SPACING,
-    -2.5 * SECTION_SPACING,
-    -1.5 * SECTION_SPACING,
-    -0.5 * SECTION_SPACING,
-    0.5 * SECTION_SPACING,
-    1.5 * SECTION_SPACING,
-    2.5 * SECTION_SPACING,
-    3.5 * SECTION_SPACING,
+    -4.0 * SECTION_SPACING,
+    -3.0 * SECTION_SPACING,
+    -2.0 * SECTION_SPACING,
+    -1.0 * SECTION_SPACING,
+    0.0 * SECTION_SPACING,
+    1.0 * SECTION_SPACING,
+    2.0 * SECTION_SPACING,
+    3.0 * SECTION_SPACING,
+    4.0 * SECTION_SPACING,
 ];
 
 const SECTION_TITLES: [&str; SECTION_COUNT] = [
@@ -84,14 +84,15 @@ const SECTION_TITLES: [&str; SECTION_COUNT] = [
     "A* Routing",
     "Detach Policy",
     "Inside View",
+    "Connector Model",
 ];
 
 // Cable
-const SLACK_NORMAL: f32 = 1.3;
+const SLACK_NORMAL: f32 = 1.15;
 const OBSTACLE_HALF_EXTENTS: Vec3 = Vec3::new(0.8, 0.8, 0.8);
 
 // Ground
-const GROUND_WIDTH: f32 = 128.0;
+const GROUND_WIDTH: f32 = 160.0;
 const GROUND_DEPTH: f32 = 14.0;
 
 // Camera
@@ -105,7 +106,7 @@ const DIRECTIONAL_LIGHT_ILLUMINANCE: f32 = 3000.0;
 
 // Tube mesh
 const TUBE_RADIUS: f32 = 0.06;
-const TUBE_SIDES: u32 = 16;
+const TUBE_SIDES: u32 = 32;
 const JOINT_RADIUS_MULTIPLIER: f32 = 1.5;
 const JOINT_SPHERE_SEGMENTS: u32 = 16;
 
@@ -165,6 +166,19 @@ struct Despawnable;
 #[derive(Component)]
 struct DetachDemoEntity;
 
+/// Marker to exclude a cable from global +/- slack adjustment.
+#[derive(Component)]
+struct SlackLocked;
+
+/// Links a connector model to its cable entity and which end it represents.
+#[derive(Component)]
+struct ConnectorEnd {
+    cable:    Entity,
+    end:      CableEnd,
+    /// Base rotation to apply before aligning to the cable tangent.
+    rotation: Quat,
+}
+
 /// Marker for cables with a radius multiplier relative to the inspector setting.
 /// The `sync_cable_settings` system applies `radius * multiplier` instead of raw radius.
 #[derive(Component)]
@@ -194,7 +208,7 @@ struct InspectorVisible(bool);
 struct CableSettings {
     #[inspector(min = 0.01, max = 0.3, display = NumberDisplay::Slider)]
     tube_radius:                  f32,
-    #[inspector(min = 3, max = 32, display = NumberDisplay::Slider)]
+    #[inspector(min = 1, max = 64, display = NumberDisplay::Slider)]
     tube_sides:                   u32,
     #[inspector(min = 1.0, max = 4.0, display = NumberDisplay::Slider)]
     joint_radius_multiplier:      f32,
@@ -269,6 +283,7 @@ fn main() {
                 handle_nav_buttons,
                 handle_drag,
                 sync_cable_settings.run_if(resource_changed::<CableSettings>),
+                align_connector_to_cable,
             ),
         )
         .run();
@@ -360,6 +375,7 @@ fn setup_sections(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
     let cable_mat = materials.add(StandardMaterial {
         base_color: CABLE_COLOR,
@@ -465,6 +481,14 @@ fn setup_sections(
     ));
     setup_section_inside_view(&mut commands, &cable_mat);
 
+    bounds.push(spawn_section_bounds(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        SECTION_X[8],
+    ));
+    setup_section_connector(&mut commands, &cable_mat, &asset_server);
+
     commands.insert_resource(SectionBounds(bounds));
 }
 
@@ -489,27 +513,28 @@ fn setup_section_catenary(
     );
 }
 
-/// Section 1: Three cables demonstrating different cap styles, arranged left to right and angled.
+/// Section 1: Three cables with different cap combinations — each end is freely choosable.
+/// Left: Round/Round, Middle: Flat/Round, Right: None/Round.
+/// The far end is always Round to show that start and end caps are independent.
 const CAP_STYLE_RADIUS_MULTIPLIER: f32 = 5.0;
 
 fn setup_section_cap_styles(commands: &mut Commands, cable_mat: &Handle<StandardMaterial>) {
     let cx = SECTION_X[1];
-    // Left: Round, Middle: Flat, Right: None — same cap on both ends
     let offsets = [-3.0_f32, 0.0, 3.0];
-    let caps = [CapStyle::Round, CapStyle::flat(), CapStyle::None];
-    let face_sides = [
-        bevy_catenary::FaceSides::Outside,
-        bevy_catenary::FaceSides::Outside,
-        bevy_catenary::FaceSides::Both,
-    ];
-    for ((x_off, cap), sides) in offsets.into_iter().zip(caps).zip(face_sides) {
-        // Angled: slight Z offset between start and end
+    let start_caps = [CapStyle::Round, CapStyle::flat(), CapStyle::None];
+
+    for (x_off, start_cap) in offsets.into_iter().zip(start_caps) {
         let start = Vec3::new(cx + x_off - 1.0, NODE_Y, -0.8);
         let end = Vec3::new(cx + x_off + 1.0, NODE_Y, 0.8);
+        let sides = if matches!(start_cap, CapStyle::None) {
+            bevy_catenary::FaceSides::Both
+        } else {
+            bevy_catenary::FaceSides::Outside
+        };
         commands
             .spawn((
                 Cable {
-                    solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+                    solver:     Solver::Linear,
                     obstacles:  vec![],
                     resolution: 0,
                 },
@@ -522,8 +547,8 @@ fn setup_section_cap_styles(commands: &mut Commands, cable_mat: &Handle<Standard
                 RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
             ))
             .with_children(|parent| {
-                parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(cap.clone()));
-                parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(cap));
+                parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(start_cap));
+                parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(CapStyle::Round));
             });
     }
 }
@@ -777,6 +802,133 @@ fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<Standar
         });
 }
 
+/// Section 8: Connector model — GLTF power plug at one cable end.
+///
+/// # Connector model origin convention
+///
+/// When attaching a 3D model (GLTF/GLB) to a cable end, the model's **origin must be
+/// at the cable attachment point** — the point where the cable tube meets the connector.
+/// For a power plug, this is the cable exit (strain relief opening). For a TRS jack,
+/// it would be the back of the barrel where the cable enters.
+///
+/// The cable endpoint uses `AttachedTo` with `Vec3::ZERO` offset, meaning the cable
+/// terminates at the connector's origin. If the origin is elsewhere (e.g. center of
+/// the plug body), the cable will visually end inside the model.
+///
+/// In Blender, set the origin by shifting the mesh vertices so the attachment point
+/// sits at (0, 0, 0), then re-export the GLB. The connector's local +Y axis (Blender +Z)
+/// should point along the cable-exit direction so the alignment system can orient it
+/// to match the cable tangent.
+fn setup_section_connector(
+    commands: &mut Commands,
+    cable_mat: &Handle<StandardMaterial>,
+    asset_server: &AssetServer,
+) {
+    let cx = SECTION_X[8];
+    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
+    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
+
+    // Load the power plug scene
+    let plug_scene: Handle<Scene> = asset_server.load("models/power_plug.glb#Scene0");
+
+    // Cable with rounded cap at start, no cap at end (plug replaces it).
+    let cable = commands
+        .spawn((
+            Cable {
+                solver:     Solver::Linear,
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            CableMeshConfig {
+                material: Some(cable_mat.clone()),
+                ..default()
+            },
+        ))
+        .id();
+
+    // Spawn the plug model — draggable, cable end attaches to it.
+    // The plug's local +Y is the cable-exit direction (strain relief).
+    // `ConnectorEnd` tells the alignment system which cable/end to read the tangent from.
+    let plug = commands
+        .spawn((
+            SceneRoot(plug_scene),
+            Transform::from_translation(end).with_scale(Vec3::splat(15.0)),
+            Draggable,
+            ConnectorEnd {
+                cable,
+                end: CableEnd::End,
+                // The plug model's cable-exit axis is +Y; we need to map that
+                // to the cable tangent. The base rotation flips the plug so the
+                // prongs face away from the cable direction.
+                rotation: Quat::IDENTITY,
+            },
+        ))
+        .observe(on_drag_start)
+        .id();
+
+    // Attach the cable endpoint at the plug's origin (Vec3::ZERO).
+    // Using a non-zero local offset would cause a feedback loop: plug rotation
+    // moves the offset → cable recomputes → new tangent → plug rotates again.
+    // The plug body hides the tube end, so ZERO offset looks fine.
+    commands.entity(cable).with_children(|parent| {
+        parent.spawn(CableEndpoint::new(CableEnd::Start, start));
+        parent.spawn((
+            CableEndpoint::new(CableEnd::End, Vec3::ZERO).with_cap(CapStyle::None),
+            AttachedTo(plug),
+        ));
+    });
+}
+
+/// Aligns connector models to their cable's end tangent when the geometry changes.
+fn align_connector_to_cable(
+    mut connectors: Query<(&ConnectorEnd, &mut Transform)>,
+    cables: Query<&ComputedCableGeometry, Changed<ComputedCableGeometry>>,
+) {
+    for (connector, mut transform) in &mut connectors {
+        let Ok(computed) = cables.get(connector.cable) else {
+            continue;
+        };
+        let Some(geometry) = &computed.geometry else {
+            continue;
+        };
+
+        // Get the tangent at the relevant end
+        let tangent = match connector.end {
+            CableEnd::End => {
+                // Last tangent of the last segment
+                geometry
+                    .segments
+                    .last()
+                    .and_then(|s| s.tangents.last().copied())
+            },
+            CableEnd::Start => {
+                // First tangent of the first segment
+                geometry
+                    .segments
+                    .first()
+                    .and_then(|s| s.tangents.first().copied())
+            },
+        };
+
+        let Some(tangent) = tangent else {
+            continue;
+        };
+
+        // The plug model's cable-exit axis is +Y in Bevy (after GLTF import).
+        // The tangent points along the cable's direction of travel, so negate it
+        // so the cable exit faces back into the cable and the prongs face outward.
+        let new_rotation = Quat::from_rotation_arc(Vec3::Y, -tangent) * connector.rotation;
+
+        // Only write if the rotation actually changed to avoid a feedback loop:
+        // writing Transform → marks GlobalTransform changed → cable recomputes →
+        // geometry changes → this system fires again → infinite cycle.
+        let delta = transform.rotation.dot(new_rotation).abs();
+        if delta < 0.9999 {
+            transform.rotation = new_rotation;
+        }
+    }
+}
+
 /// Spawn the detach demo section (can be called again on reset).
 fn spawn_detach_demo(
     commands: &mut Commands,
@@ -958,7 +1110,6 @@ fn spawn_keyboard_shortcuts(commands: &mut Commands, camera: Entity) {
             "D - Debug gizmos\n\
              F - Full scene\n\
              I - Inspector\n\
-             N - Toggle nodes\n\
              +/- Slack",
         ),
         TextFont {
@@ -1217,7 +1368,7 @@ fn handle_nav_buttons(
         new_section = Some(current.0 + 1);
     }
 
-    // Number keys 1-7 jump directly to that section
+    // Number keys 1-9 jump directly to that section
     let number_keys = [
         KeyCode::Digit1,
         KeyCode::Digit2,
@@ -1227,6 +1378,7 @@ fn handle_nav_buttons(
         KeyCode::Digit6,
         KeyCode::Digit7,
         KeyCode::Digit8,
+        KeyCode::Digit9,
     ];
     for (i, key) in number_keys.iter().enumerate() {
         if keyboard.just_pressed(*key) && i < SECTION_COUNT {
@@ -1457,9 +1609,8 @@ fn handle_keyboard(
     mut debug_enabled: ResMut<CableDebugEnabled>,
     mut inspector_visible: ResMut<InspectorVisible>,
     scene: Res<SceneEntities>,
-    mut node_cubes: Query<&mut Visibility, With<NodeCube>>,
-    // Slack adjustment
-    mut cables: Query<&mut Cable>,
+    // Slack adjustment (exclude `SlackLocked` cables)
+    mut cables: Query<&mut Cable, Without<SlackLocked>>,
     // Reset detach demo
     shared_cable_mat: Res<SharedCableMaterial>,
     detach_entities: Query<Entity, With<DetachDemoEntity>>,
@@ -1489,20 +1640,11 @@ fn handle_keyboard(
         );
     }
 
-    if keyboard.just_pressed(KeyCode::KeyN) {
-        for mut vis in &mut node_cubes {
-            *vis = match *vis {
-                Visibility::Hidden => Visibility::Inherited,
-                _ => Visibility::Hidden,
-            };
-        }
-    }
-
     // +/-: Adjust catenary slack
-    let slack_delta = if keyboard.just_pressed(KeyCode::Equal) {
-        0.05
-    } else if keyboard.just_pressed(KeyCode::Minus) {
-        -0.05
+    let slack_delta = if keyboard.pressed(KeyCode::Equal) {
+        0.01
+    } else if keyboard.pressed(KeyCode::Minus) {
+        -0.01
     } else {
         0.0
     };
@@ -1510,13 +1652,13 @@ fn handle_keyboard(
         for mut cable in &mut cables {
             match &mut cable.solver {
                 Solver::Catenary(catenary) => {
-                    catenary.slack = (catenary.slack + slack_delta).max(1.01);
+                    catenary.slack = (catenary.slack + slack_delta).max(1.0);
                 },
                 Solver::Routed {
                     curve: Curve::Catenary(catenary),
                     ..
                 } => {
-                    catenary.slack = (catenary.slack + slack_delta).max(1.01);
+                    catenary.slack = (catenary.slack + slack_delta).max(1.0);
                 },
                 _ => {},
             }
