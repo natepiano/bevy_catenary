@@ -165,9 +165,14 @@ struct Despawnable;
 #[derive(Component)]
 struct DetachDemoEntity;
 
-/// Marker for the inside-view cable (section 7) — uses `FaceSides::Inside` and large radius.
+/// Marker for cables with a radius multiplier relative to the inspector setting.
+/// The `sync_cable_settings` system applies `radius * multiplier` instead of raw radius.
 #[derive(Component)]
-struct InsideViewCable;
+struct RadiusMultiplier(f32);
+
+/// UI text that is only visible when viewing a specific section.
+#[derive(Component)]
+struct SectionInfo(usize);
 
 #[derive(Component)]
 struct NavLabel;
@@ -259,6 +264,7 @@ fn main() {
             (
                 attach_click_to_cable_meshes,
                 update_current_section_from_camera,
+                update_section_info_visibility,
                 handle_keyboard,
                 handle_nav_buttons,
                 handle_drag,
@@ -388,7 +394,7 @@ fn setup_sections(
         &mut materials,
         SECTION_X[1],
     ));
-    setup_section_cap_styles(&mut commands, &node_mesh, &node_mat, &cable_mat);
+    setup_section_cap_styles(&mut commands, &cable_mat);
 
     bounds.push(spawn_section_bounds(
         &mut commands,
@@ -483,32 +489,42 @@ fn setup_section_catenary(
     );
 }
 
-/// Section 1: Three cables demonstrating different cap styles.
-fn setup_section_cap_styles(
-    commands: &mut Commands,
-    node_mesh: &Handle<Mesh>,
-    node_mat: &Handle<StandardMaterial>,
-    cable_mat: &Handle<StandardMaterial>,
-) {
+/// Section 1: Three cables demonstrating different cap styles, arranged left to right and angled.
+const CAP_STYLE_RADIUS_MULTIPLIER: f32 = 5.0;
+
+fn setup_section_cap_styles(commands: &mut Commands, cable_mat: &Handle<StandardMaterial>) {
     let cx = SECTION_X[1];
-    for (z, start_cap, end_cap, _label) in [
-        (-1.5_f32, CapStyle::Round, CapStyle::Round, "Round / Round"),
-        (0.0, CapStyle::flat(), CapStyle::flat(), "Flat / Flat"),
-        (1.5, CapStyle::Round, CapStyle::None, "Round / None"),
-    ] {
-        let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, z);
-        let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, z);
-        spawn_node_pair(commands, node_mesh, node_mat, start, end);
-        spawn_cable_with_caps(
-            commands,
-            start,
-            end,
-            Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
-            vec![],
-            start_cap,
-            end_cap,
-            cable_mat,
-        );
+    // Left: Round, Middle: Flat, Right: None — same cap on both ends
+    let offsets = [-3.0_f32, 0.0, 3.0];
+    let caps = [CapStyle::Round, CapStyle::flat(), CapStyle::None];
+    let face_sides = [
+        bevy_catenary::FaceSides::Outside,
+        bevy_catenary::FaceSides::Outside,
+        bevy_catenary::FaceSides::Both,
+    ];
+    for ((x_off, cap), sides) in offsets.into_iter().zip(caps).zip(face_sides) {
+        // Angled: slight Z offset between start and end
+        let start = Vec3::new(cx + x_off - 1.0, NODE_Y, -0.8);
+        let end = Vec3::new(cx + x_off + 1.0, NODE_Y, 0.8);
+        commands
+            .spawn((
+                Cable {
+                    solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+                    obstacles:  vec![],
+                    resolution: 0,
+                },
+                CableMeshConfig {
+                    radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                    material: Some(cable_mat.clone()),
+                    face_sides: sides,
+                    ..default()
+                },
+                RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
+            ))
+            .with_children(|parent| {
+                parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(cap.clone()));
+                parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(cap));
+            });
     }
 }
 
@@ -632,7 +648,7 @@ fn setup_section_shared_hub(
     cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[4];
-    let drag_mesh = meshes.add(Sphere::new(0.35).mesh().uv(16, 16));
+    let drag_mesh = meshes.add(Sphere::new(0.35).mesh().uv(32, 32));
     let drag_mat = materials.add(StandardMaterial {
         base_color: DRAGGABLE_COLOR,
         ..default()
@@ -727,6 +743,8 @@ fn setup_section_astar(
         .observe(on_mesh_clicked);
 }
 
+const INSIDE_VIEW_RADIUS_MULTIPLIER: f32 = 25.0;
+
 /// Section 7: Inside view — large tube rendered inside-only.
 fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<StandardMaterial>) {
     let cx = SECTION_X[7];
@@ -745,13 +763,13 @@ fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<Standar
                 resolution: 0,
             },
             CableMeshConfig {
-                radius: 1.5,
+                radius: TUBE_RADIUS * INSIDE_VIEW_RADIUS_MULTIPLIER,
                 sides: 64,
                 face_sides: bevy_catenary::FaceSides::Both,
                 material: Some(cable_mat.clone()),
                 ..default()
             },
-            InsideViewCable,
+            RadiusMultiplier(INSIDE_VIEW_RADIUS_MULTIPLIER),
         ))
         .with_children(|parent| {
             parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(CapStyle::None));
@@ -861,6 +879,53 @@ fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
     spawn_help_text(&mut commands, scene.camera);
     spawn_keyboard_shortcuts(&mut commands, scene.camera);
     spawn_nav_bar(&mut commands, scene.camera);
+    spawn_section_infos(&mut commands, scene.camera);
+}
+
+/// Spawn per-section info text (top-center, hidden by default).
+fn spawn_section_infos(commands: &mut Commands, camera: Entity) {
+    let section_texts: [(usize, &str); 6] = [
+        (
+            1,
+            "Left: Round    Middle: Flat    Right: None\nSame cap on both ends (can be different)",
+        ),
+        (2, "Catenary    Linear    Orthogonal"),
+        (3, "Drag blue boxes"),
+        (4, "Drag sphere"),
+        (
+            6,
+            "Click green sphere - cable freezes\n\
+             Click red sphere - cable disappears\n\
+             R - Reset",
+        ),
+        (7, "Look, it's a tube!"),
+    ];
+
+    for (section, text) in section_texts {
+        commands.spawn((
+            Text::new(text),
+            TextFont {
+                font_size: UI_FONT_SIZE,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(Justify::Center),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(60.0),
+                left: Val::Percent(50.0),
+                margin: UiRect::left(Val::Px(-200.0)),
+                width: Val::Px(400.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+            Pickable::IGNORE,
+            UiTargetCamera(camera),
+            SectionInfo(section),
+            Visibility::Hidden,
+        ));
+    }
 }
 
 /// Navigation help panel (top-left corner).
@@ -893,7 +958,8 @@ fn spawn_keyboard_shortcuts(commands: &mut Commands, camera: Entity) {
             "D - Debug gizmos\n\
              F - Full scene\n\
              I - Inspector\n\
-             N - Toggle nodes",
+             N - Toggle nodes\n\
+             +/- Slack",
         ),
         TextFont {
             font_size: UI_FONT_SIZE,
@@ -1043,34 +1109,6 @@ fn spawn_cable(
         .with_children(|parent| {
             parent.spawn(CableEndpoint::new(CableEnd::Start, start));
             parent.spawn(CableEndpoint::new(CableEnd::End, end));
-        });
-}
-
-fn spawn_cable_with_caps(
-    commands: &mut Commands,
-    start: Vec3,
-    end: Vec3,
-    solver: Solver,
-    obstacles: Vec<Obstacle>,
-    cap_start: CapStyle,
-    cap_end: CapStyle,
-    material: &Handle<StandardMaterial>,
-) {
-    commands
-        .spawn((
-            Cable {
-                solver,
-                obstacles,
-                resolution: 0,
-            },
-            CableMeshConfig {
-                material: Some(material.clone()),
-                ..default()
-            },
-        ))
-        .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(cap_start));
-            parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(cap_end));
         });
 }
 
@@ -1322,6 +1360,20 @@ fn on_despawnable_clicked(click: On<Pointer<Click>>, mut commands: Commands) {
 // Runtime systems
 // ============================================================================
 
+/// Show/hide per-section info text based on current section.
+fn update_section_info_visibility(
+    current: Res<CurrentSection>,
+    mut infos: Query<(&SectionInfo, &mut Visibility)>,
+) {
+    for (info, mut vis) in &mut infos {
+        *vis = if info.0 == current.0 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
+
 /// Track which section the camera is nearest to and update the nav label.
 fn update_current_section_from_camera(
     cameras: Query<&PanOrbitCamera>,
@@ -1372,13 +1424,19 @@ fn sync_cable_settings(
     settings: Res<CableSettings>,
     mut commands: Commands,
     cables: Query<
-        (Entity, &CableMeshConfig, &ComputedCableGeometry),
-        (With<Cable>, Without<InsideViewCable>),
+        (
+            Entity,
+            &CableMeshConfig,
+            &ComputedCableGeometry,
+            Option<&RadiusMultiplier>,
+        ),
+        With<Cable>,
     >,
 ) {
-    for (entity, config, computed) in &cables {
+    for (entity, config, computed, multiplier) in &cables {
         let mut new_config = config.clone();
-        new_config.radius = settings.tube_radius;
+        let mult = multiplier.map_or(1.0, |m| m.0);
+        new_config.radius = settings.tube_radius * mult;
         new_config.sides = settings.tube_sides;
         new_config.elbow_bend_radius_multiplier = settings.elbow_bend_radius_multiplier;
         new_config.elbow_min_radius_multiplier = settings.elbow_min_radius_multiplier;
@@ -1400,6 +1458,8 @@ fn handle_keyboard(
     mut inspector_visible: ResMut<InspectorVisible>,
     scene: Res<SceneEntities>,
     mut node_cubes: Query<&mut Visibility, With<NodeCube>>,
+    // Slack adjustment
+    mut cables: Query<&mut Cable>,
     // Reset detach demo
     shared_cable_mat: Res<SharedCableMaterial>,
     detach_entities: Query<Entity, With<DetachDemoEntity>>,
@@ -1435,6 +1495,31 @@ fn handle_keyboard(
                 Visibility::Hidden => Visibility::Inherited,
                 _ => Visibility::Hidden,
             };
+        }
+    }
+
+    // +/-: Adjust catenary slack
+    let slack_delta = if keyboard.just_pressed(KeyCode::Equal) {
+        0.05
+    } else if keyboard.just_pressed(KeyCode::Minus) {
+        -0.05
+    } else {
+        0.0
+    };
+    if slack_delta != 0.0 {
+        for mut cable in &mut cables {
+            match &mut cable.solver {
+                Solver::Catenary(catenary) => {
+                    catenary.slack = (catenary.slack + slack_delta).max(1.01);
+                },
+                Solver::Routed {
+                    curve: Curve::Catenary(catenary),
+                    ..
+                } => {
+                    catenary.slack = (catenary.slack + slack_delta).max(1.01);
+                },
+                _ => {},
+            }
         }
     }
 

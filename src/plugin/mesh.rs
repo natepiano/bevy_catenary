@@ -859,19 +859,33 @@ fn add_flat_cap(
     flip_winding: bool,
     buffers: &mut MeshBuffers,
 ) {
-    // Center vertex at the tube endpoint, normal facing outward along cap direction
+    let cap_normal = cap_direction.to_array();
+
+    // Duplicate the ring vertices with flat normals so the cap renders flat.
+    // The tube's ring vertices have outward-facing normals which cause GPU
+    // interpolation to produce a rounded lighting illusion on the cap.
+    let new_ring_base = buffers.positions.len().to_u32();
+    for j in 0..sides {
+        let orig_idx = (ring_base + j).to_usize();
+        buffers.positions.push(buffers.positions[orig_idx]);
+        buffers.normals.push(cap_normal);
+        let u = j.to_f32() / sides.to_f32();
+        buffers.uvs.push([u, 0.0]);
+    }
+
+    // Center vertex
     let center_idx = buffers.positions.len().to_u32();
     buffers.positions.push(center.to_array());
-    buffers.normals.push(cap_direction.to_array());
+    buffers.normals.push(cap_normal);
     buffers.uvs.push([0.5, 0.5]);
 
-    // Triangle fan from ring to center
+    // Triangle fan from duplicated ring to center
     for j in 0..sides {
         let j_next = (j + 1) % sides;
         push_tri(
             buffers.indices,
-            ring_base + j,
-            ring_base + j_next,
+            new_ring_base + j,
+            new_ring_base + j_next,
             center_idx,
             flip_winding,
         );
