@@ -70,13 +70,12 @@ impl Solver {
                 resolution,
             } => {
                 let waypoints = planner.plan(request.start, request.end, request.obstacles);
-                let res = if request.resolution > 0 {
-                    request.resolution
-                } else if *resolution > 0 {
+                let default_res = if *resolution > 0 {
                     *resolution
                 } else {
                     DEFAULT_RESOLUTION
                 };
+                let res = request.effective_resolution(default_res);
 
                 let segments: Vec<CableSegment> = waypoints
                     .windows(2)

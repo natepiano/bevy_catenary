@@ -56,15 +56,7 @@ pub struct LinearSolver;
 
 impl CurveSolver for LinearSolver {
     fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment {
-        let n = resolution.max(2).to_usize();
-        let mut points = Vec::with_capacity(n);
-
-        for i in 0..n {
-            let t = i.to_f32() / (n - 1).to_f32();
-            points.push(start.lerp(end, t));
-        }
-
-        CableSegment::from_points(points)
+        CableSegment::straight_line(start, end, resolution.max(2).to_usize())
     }
 }
 
@@ -109,12 +101,7 @@ impl RouteSolver for Router {
         let waypoints = self
             .planner
             .plan(request.start, request.end, request.obstacles);
-        let resolution = if request.resolution > 0 {
-            request.resolution
-        } else {
-            self.resolution
-        };
-
+        let resolution = request.effective_resolution(self.resolution);
         let segments: Vec<CableSegment> = waypoints
             .windows(2)
             .map(|pair| self.curve.solve_segment(pair[0], pair[1], resolution))

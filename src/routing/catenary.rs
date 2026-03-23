@@ -207,12 +207,7 @@ pub fn sample_3d(
 
 /// Fallback for degenerate cases: straight line between two points.
 fn sample_straight_line(start: Vec3, end: Vec3, n: usize) -> CableSegment {
-    let mut points = Vec::with_capacity(n);
-    for i in 0..n {
-        let t = i.to_f32() / (n - 1).to_f32();
-        points.push(start.lerp(end, t));
-    }
-    CableSegment::from_points(points)
+    CableSegment::straight_line(start, end, n)
 }
 
 /// Handle purely vertical cables (start and end aligned with gravity).
@@ -332,12 +327,7 @@ impl CurveSolver for CatenarySolver {
 
 impl RouteSolver for CatenarySolver {
     fn solve(&self, request: &RouteRequest) -> CableGeometry {
-        let resolution = if request.resolution > 0 {
-            request.resolution
-        } else {
-            self.resolution
-        };
-
+        let resolution = request.effective_resolution(self.resolution);
         let segment = self.solve_segment(request.start, request.end, resolution);
         let waypoints = vec![request.start, request.end];
         CableGeometry::from_segments(vec![segment], waypoints)

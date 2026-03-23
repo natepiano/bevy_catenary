@@ -22,6 +22,7 @@ pub use catenary::solve_parameter;
 pub use constants::DEFAULT_GRAVITY;
 pub use constants::DEFAULT_RESOLUTION;
 pub use constants::DEFAULT_SLACK;
+pub use constants::MIN_SEGMENT_LENGTH;
 // Solver enums
 pub use enums::Curve;
 pub use enums::Planner;

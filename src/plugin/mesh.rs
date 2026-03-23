@@ -121,6 +121,15 @@ pub enum FaceSides {
     Both,
 }
 
+/// Which side of a cap to generate — controls normal direction and winding order.
+#[derive(Clone, Copy, Debug)]
+enum CapSide {
+    /// Outward-facing normals (standard exterior cap).
+    Outside,
+    /// Inward-facing normals (for interior lighting).
+    Inside,
+}
+
 /// Configuration for cable mesh generation. Attach to a [`Cable`] entity to control
 /// how its tube mesh is rendered.
 #[derive(Component, Clone, Debug, Reflect)]
@@ -179,8 +188,15 @@ impl Default for CableMeshConfig {
     }
 }
 
+/// Result of flattening all geometry segments into a single continuous polyline.
+struct FlattenedGeometry {
+    points:      Vec<Vec3>,
+    tangents:    Vec<Vec3>,
+    arc_lengths: Vec<f32>,
+}
+
 /// Flatten all geometry segments into one continuous polyline, deduplicating boundary points.
-fn flatten_geometry(geometry: &CableGeometry) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>) {
+fn flatten_geometry(geometry: &CableGeometry) -> FlattenedGeometry {
     let mut points: Vec<Vec3> = Vec::new();
     let mut tangents: Vec<Vec3> = Vec::new();
     let mut arc_lengths: Vec<f32> = Vec::new();
@@ -203,7 +219,11 @@ fn flatten_geometry(geometry: &CableGeometry) -> (Vec<Vec3>, Vec<Vec3>, Vec<f32>
         arc_offset += segment.length;
     }
 
-    (points, tangents, arc_lengths)
+    FlattenedGeometry {
+        points,
+        tangents,
+        arc_lengths,
+    }
 }
 
 /// Add start and end caps to the tube mesh.
@@ -216,8 +236,6 @@ fn add_end_caps(
     point_count: usize,
     buffers: &mut MeshBuffers,
 ) {
-    let cap_rings = sides.max(8);
-
     if point_count < 2 {
         return;
     }
@@ -226,96 +244,99 @@ fn add_end_caps(
     let needs_outside = matches!(config.face_sides, FaceSides::Outside | FaceSides::Both);
     let negate_outside = matches!(config.face_sides, FaceSides::Inside);
 
-    match config.cap_start {
-        CapStyle::Round => {
-            let (start_normal, start_binormal) = frames[0];
-            if needs_outside {
-                add_hemisphere_cap(
-                    &all_points[0],
-                    &(-all_tangents[0]),
-                    &start_normal,
-                    &start_binormal,
-                    config.radius,
-                    sides,
-                    cap_rings,
-                    0,
-                    !negate_outside,
-                    buffers,
-                );
-            }
-            if needs_inside {
-                add_inside_hemisphere_cap(
-                    &all_points[0],
-                    &(-all_tangents[0]),
-                    &start_normal,
-                    &start_binormal,
-                    config.radius,
-                    sides,
-                    cap_rings,
-                    0,
-                    buffers,
-                );
-            }
-        },
-        CapStyle::Flat { ref normal } => {
-            let dir = normal.unwrap_or(-all_tangents[0]);
-            if needs_outside {
-                add_flat_cap(&all_points[0], &dir, 0, sides, !negate_outside, buffers);
-            }
-            if needs_inside {
-                add_inside_flat_cap(&all_points[0], &dir, 0, sides, buffers);
-            }
-        },
-        CapStyle::None => {},
-    }
+    // Start cap
+    add_single_cap(
+        &config.cap_start,
+        &all_points[0],
+        -all_tangents[0],
+        frames[0],
+        config.radius,
+        sides,
+        0,
+        !negate_outside,
+        needs_outside,
+        needs_inside,
+        buffers,
+    );
 
+    // End cap
     let last = point_count - 1;
     let last_ring_base = (last * sides.to_usize()).to_u32();
-    match config.cap_end {
+    add_single_cap(
+        &config.cap_end,
+        &all_points[last],
+        all_tangents[last],
+        frames[last],
+        config.radius,
+        sides,
+        last_ring_base,
+        negate_outside,
+        needs_outside,
+        needs_inside,
+        buffers,
+    );
+}
+
+/// Dispatch a single cap (start or end) based on style, generating outside and/or inside faces.
+#[allow(clippy::too_many_arguments)]
+fn add_single_cap(
+    style: &CapStyle,
+    point: &Vec3,
+    tangent_dir: Vec3,
+    frame: (Vec3, Vec3),
+    radius: f32,
+    sides: u32,
+    ring_base: u32,
+    flip_winding: bool,
+    needs_outside: bool,
+    needs_inside: bool,
+    buffers: &mut MeshBuffers,
+) {
+    let cap_rings = sides.max(8);
+
+    match style {
         CapStyle::Round => {
-            let (end_normal, end_binormal) = frames[last];
-            if needs_outside {
-                add_hemisphere_cap(
-                    &all_points[last],
-                    &all_tangents[last],
-                    &end_normal,
-                    &end_binormal,
-                    config.radius,
-                    sides,
-                    cap_rings,
-                    last_ring_base,
-                    negate_outside,
-                    buffers,
-                );
-            }
-            if needs_inside {
-                add_inside_hemisphere_cap(
-                    &all_points[last],
-                    &all_tangents[last],
-                    &end_normal,
-                    &end_binormal,
-                    config.radius,
-                    sides,
-                    cap_rings,
-                    last_ring_base,
-                    buffers,
-                );
+            let (normal, binormal) = frame;
+            for &cap_side in &[CapSide::Outside, CapSide::Inside] {
+                let needed = match cap_side {
+                    CapSide::Outside => needs_outside,
+                    CapSide::Inside => needs_inside,
+                };
+                if needed {
+                    add_hemisphere_cap(
+                        point,
+                        &tangent_dir,
+                        &normal,
+                        &binormal,
+                        radius,
+                        sides,
+                        cap_rings,
+                        ring_base,
+                        cap_side,
+                        flip_winding,
+                        buffers,
+                    );
+                }
             }
         },
-        CapStyle::Flat { ref normal } => {
-            let dir = normal.unwrap_or(all_tangents[last]);
-            if needs_outside {
-                add_flat_cap(
-                    &all_points[last],
-                    &dir,
-                    last_ring_base,
-                    sides,
-                    negate_outside,
-                    buffers,
-                );
-            }
-            if needs_inside {
-                add_inside_flat_cap(&all_points[last], &dir, last_ring_base, sides, buffers);
+        CapStyle::Flat { normal } => {
+            let dir = normal.unwrap_or(tangent_dir);
+            for &cap_side in &[CapSide::Outside, CapSide::Inside] {
+                let needed = match cap_side {
+                    CapSide::Outside => needs_outside,
+                    CapSide::Inside => needs_inside,
+                };
+                if needed {
+                    add_flat_cap(
+                        point,
+                        &dir,
+                        ring_base,
+                        sides,
+                        cap_side,
+                        flip_winding,
+                        buffers,
+                    );
+                }
             }
         },
         CapStyle::None => {},
@@ -324,6 +345,117 @@ fn add_end_caps(
 
 /// Generate a tube `Mesh` from cable geometry.
 ///
+/// Generate cross-section rings along the tube path and connect them with triangle quads.
+#[allow(clippy::too_many_arguments)]
+fn generate_tube_rings(
+    all_points: &[Vec3],
+    all_tangents: &[Vec3],
+    all_arc_lengths: &[f32],
+    frames: &[(Vec3, Vec3)],
+    config: &CableMeshConfig,
+    sides: u32,
+    total_length: f32,
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    inside_indices: &mut Vec<u32>,
+) {
+    for (i, ((point, ..), (frame_normal, binormal))) in
+        all_points.iter().zip(all_tangents).zip(frames).enumerate()
+    {
+        let arc_u = all_arc_lengths[i] / total_length;
+
+        // Generate cross-section ring
+        for j in 0..sides {
+            let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
+            let (sin_a, cos_a) = angle.sin_cos();
+
+            let offset = *frame_normal * cos_a * config.radius + *binormal * sin_a * config.radius;
+            let vertex_pos = *point + offset;
+            let vertex_normal = offset.normalize_or_zero();
+
+            positions.push(vertex_pos.to_array());
+            normals.push(vertex_normal.to_array());
+            uvs.push([arc_u, j.to_f32() / sides.to_f32()]);
+        }
+
+        // Connect to previous ring with triangles
+        if i > 0 {
+            let base = ((i - 1) * sides.to_usize()).to_u32();
+            let next_base = (i * sides.to_usize()).to_u32();
+
+            for j in 0..sides {
+                let j_next = (j + 1) % sides;
+
+                let curr_j = base + j;
+                let curr_j_next = base + j_next;
+                let next_j = next_base + j;
+                let next_j_next = next_base + j_next;
+
+                match config.face_sides {
+                    FaceSides::Outside => {
+                        push_quad(indices, curr_j, curr_j_next, next_j, next_j_next, false);
+                    },
+                    FaceSides::Inside => {
+                        push_quad(indices, curr_j, curr_j_next, next_j, next_j_next, true);
+                    },
+                    FaceSides::Both => {
+                        push_quad(indices, curr_j, curr_j_next, next_j, next_j_next, false);
+                        push_quad(
+                            inside_indices,
+                            curr_j,
+                            curr_j_next,
+                            next_j,
+                            next_j_next,
+                            true,
+                        );
+                    },
+                }
+            }
+        }
+    }
+}
+
+/// For `Inside` or `Both` face sides, adjust normals so interior faces receive correct lighting.
+fn apply_inside_normals(
+    face_sides: &FaceSides,
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    inside_indices: &mut Vec<u32>,
+) {
+    match face_sides {
+        FaceSides::Outside => {},
+        FaceSides::Inside => {
+            for n in &mut *normals {
+                n[0] = -n[0];
+                n[1] = -n[1];
+                n[2] = -n[2];
+            }
+        },
+        FaceSides::Both => {
+            let original_vert_count = positions.len().to_u32();
+
+            // Duplicate all tube ring vertices with negated normals for inside faces
+            let dup_positions: Vec<[f32; 3]> = positions.clone();
+            let dup_normals: Vec<[f32; 3]> =
+                normals.iter().map(|n| [-n[0], -n[1], -n[2]]).collect();
+            let dup_uvs: Vec<[f32; 2]> = uvs.clone();
+            positions.extend(dup_positions);
+            normals.extend(dup_normals);
+            uvs.extend(dup_uvs);
+
+            // Offset all inside indices to reference the duplicated (inward-normal) vertices
+            for idx in &mut *inside_indices {
+                *idx += original_vert_count;
+            }
+            indices.extend(inside_indices.iter());
+        },
+    }
+}
+
 /// All segments are flattened into a single continuous polyline,
 /// producing one seamless tube for the entire cable path.
 #[must_use]
@@ -331,7 +463,10 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
     let sides = config.sides.max(3);
     let total_length = geometry.total_length.max(0.001);
 
-    let (mut all_points, mut all_tangents, mut all_arc_lengths) = flatten_geometry(geometry);
+    let flat = flatten_geometry(geometry);
+    let mut all_points = flat.points;
+    let mut all_tangents = flat.tangents;
+    let mut all_arc_lengths = flat.arc_lengths;
 
     if all_points.len() < 2 {
         return Mesh::new(PrimitiveTopology::TriangleList, default());
@@ -366,107 +501,29 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
     let mut indices: Vec<u32> = Vec::new();
     let mut inside_indices: Vec<u32> = Vec::new();
 
-    for (i, ((point, ..), (frame_normal, binormal))) in all_points
-        .iter()
-        .zip(&all_tangents)
-        .zip(&frames)
-        .enumerate()
-    {
-        let arc_u = all_arc_lengths[i] / total_length;
+    generate_tube_rings(
+        &all_points,
+        &all_tangents,
+        &all_arc_lengths,
+        &frames,
+        config,
+        sides,
+        total_length,
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        &mut inside_indices,
+    );
 
-        // Generate cross-section ring
-        for j in 0..sides {
-            let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
-            let (sin_a, cos_a) = angle.sin_cos();
-
-            let offset = *frame_normal * cos_a * config.radius + *binormal * sin_a * config.radius;
-            let vertex_pos = *point + offset;
-            let vertex_normal = offset.normalize_or_zero();
-
-            positions.push(vertex_pos.to_array());
-            normals.push(vertex_normal.to_array());
-            uvs.push([arc_u, j.to_f32() / sides.to_f32()]);
-        }
-
-        // Connect to previous ring with triangles
-        if i > 0 {
-            let base = ((i - 1) * sides.to_usize()).to_u32();
-            let next_base = (i * sides.to_usize()).to_u32();
-
-            for j in 0..sides {
-                let j_next = (j + 1) % sides;
-
-                let curr_j = base + j;
-                let curr_j_next = base + j_next;
-                let next_j = next_base + j;
-                let next_j_next = next_base + j_next;
-
-                // Outside quads go into `indices`, inside quads go into `inside_indices`
-                // so they can be cleanly separated for the normal-duplication pass.
-                match config.face_sides {
-                    FaceSides::Outside => push_quad(
-                        &mut indices,
-                        curr_j,
-                        curr_j_next,
-                        next_j,
-                        next_j_next,
-                        false,
-                    ),
-                    FaceSides::Inside => {
-                        push_quad(&mut indices, curr_j, curr_j_next, next_j, next_j_next, true);
-                    },
-                    FaceSides::Both => {
-                        push_quad(
-                            &mut indices,
-                            curr_j,
-                            curr_j_next,
-                            next_j,
-                            next_j_next,
-                            false,
-                        );
-                        push_quad(
-                            &mut inside_indices,
-                            curr_j,
-                            curr_j_next,
-                            next_j,
-                            next_j_next,
-                            true,
-                        );
-                    },
-                }
-            }
-        }
-    }
-
-    // For `Inside` or `Both`, normals must point inward so interior faces receive light.
-    match config.face_sides {
-        FaceSides::Outside => {},
-        FaceSides::Inside => {
-            for n in normals.iter_mut() {
-                n[0] = -n[0];
-                n[1] = -n[1];
-                n[2] = -n[2];
-            }
-        },
-        FaceSides::Both => {
-            let original_vert_count = positions.len().to_u32();
-
-            // Duplicate all tube ring vertices with negated normals for inside faces
-            let dup_positions: Vec<[f32; 3]> = positions.clone();
-            let dup_normals: Vec<[f32; 3]> =
-                normals.iter().map(|n| [-n[0], -n[1], -n[2]]).collect();
-            let dup_uvs: Vec<[f32; 2]> = uvs.clone();
-            positions.extend(dup_positions);
-            normals.extend(dup_normals);
-            uvs.extend(dup_uvs);
-
-            // Offset all inside indices to reference the duplicated (inward-normal) vertices
-            for idx in inside_indices.iter_mut() {
-                *idx += original_vert_count;
-            }
-            indices.extend(inside_indices);
-        },
-    }
+    apply_inside_normals(
+        &config.face_sides,
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        &mut inside_indices,
+    );
 
     // Add caps at ends
     let mut buffers = MeshBuffers {
@@ -573,11 +630,8 @@ fn insert_knee_rings(
         return (points, tangents, arc_lengths);
     }
 
-    let tube_radius = config.radius;
-    let bend_radius = tube_radius * config.elbow_bend_radius_multiplier;
-    let angle_threshold_cos = (config.elbow_angle_threshold_deg.to_radians()).cos();
+    let params = ElbowParams::from_config(config);
     let rings_per_right_angle = config.elbow_rings_per_right_angle;
-    let min_bend_r = tube_radius * config.elbow_min_radius_multiplier;
 
     let mut out_pts = Vec::with_capacity(point_count * 2);
     let mut out_arc = Vec::with_capacity(point_count * 2);
@@ -604,31 +658,18 @@ fn insert_knee_rings(
             continue;
         };
 
-        let cos_a = dir_in.dot(dir_out).clamp(-1.0, 1.0);
-
-        if cos_a >= angle_threshold_cos {
+        let Some(meta) =
+            compute_elbow_at_corner(dir_in, dir_out, points[i], config, elbow_idx, &params)
+        else {
             out_pts.push(points[i]);
             out_arc.push(arc_lengths[i]);
             i += 1;
             continue;
-        }
+        };
+        elbow_idx += 1;
 
-        let theta = cos_a.acos();
-
-        if bend_radius < min_bend_r {
-            out_pts.push(points[i]);
-            out_arc.push(arc_lengths[i]);
-            i += 1;
-            continue;
-        }
-
-        let half = theta * 0.5;
-        let fillet_reach = bend_radius * half.tan();
-        let corner = points[i];
-
-        // Fillet start/end computed from actual segment directions.
-        let fillet_start = corner - dir_in * fillet_reach;
-        let fillet_end = corner + dir_out * fillet_reach;
+        let fillet_start = meta.p0;
+        let fillet_end = meta.p3;
 
         // Remove output points that overlap with the fillet's backward reach.
         while out_pts.len() > 1 {
@@ -649,16 +690,11 @@ fn insert_knee_rings(
         out_pts.push(fillet_start);
         out_arc.push(base_arc + dist_to_fillet_start);
 
-        // Cubic Bézier with tangent-matched endpoints:
-        // P0 = fillet_start, tangent at start = dir_in
-        // P3 = fillet_end,   tangent at end   = dir_out
-        let p0 = fillet_start;
-        let p3 = fillet_end;
-        let max_arm = fillet_reach * 0.95;
-        let (p1_arm, p2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
-        let p1 = p0 + dir_in * p1_arm;
-        let p2 = p3 - dir_out * p2_arm;
-        elbow_idx += 1;
+        let p0 = meta.p0;
+        let p1 = meta.p1;
+        let p2 = meta.p2;
+        let p3 = meta.p3;
+        let theta = meta.dir_in.dot(meta.dir_out).clamp(-1.0, 1.0).acos();
 
         let num_rings = ((theta / std::f32::consts::FRAC_PI_2) * rings_per_right_angle.to_f32())
             .ceil()
@@ -760,6 +796,69 @@ pub struct ElbowMetadata {
     pub d:       f32,
 }
 
+/// Pre-computed elbow detection parameters extracted from `CableMeshConfig`.
+struct ElbowParams {
+    angle_threshold_cos: f32,
+    bend_radius:         f32,
+    min_bend_r:          f32,
+}
+
+impl ElbowParams {
+    fn from_config(config: &CableMeshConfig) -> Self {
+        let tube_radius = config.radius;
+        Self {
+            angle_threshold_cos: (config.elbow_angle_threshold_deg.to_radians()).cos(),
+            bend_radius:         tube_radius * config.elbow_bend_radius_multiplier,
+            min_bend_r:          tube_radius * config.elbow_min_radius_multiplier,
+        }
+    }
+}
+
+/// Compute `ElbowMetadata` for a single corner point, if the bend is sharp enough.
+///
+/// Returns `None` if the bend is below the angle threshold or the bend radius is too small.
+fn compute_elbow_at_corner(
+    dir_in: Vec3,
+    dir_out: Vec3,
+    corner: Vec3,
+    config: &CableMeshConfig,
+    elbow_idx: usize,
+    params: &ElbowParams,
+) -> Option<ElbowMetadata> {
+    let cos_a = dir_in.dot(dir_out).clamp(-1.0, 1.0);
+
+    if cos_a >= params.angle_threshold_cos {
+        return None;
+    }
+
+    if params.bend_radius < params.min_bend_r {
+        return None;
+    }
+
+    let theta = cos_a.acos();
+    let half = theta * 0.5;
+    let fillet_reach = params.bend_radius * half.tan();
+
+    let p0 = corner - dir_in * fillet_reach;
+    let p3 = corner + dir_out * fillet_reach;
+    let max_arm = fillet_reach * 0.95;
+    let (p1_arm, p2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
+    let p1 = p0 + dir_in * p1_arm;
+    let p2 = p3 - dir_out * p2_arm;
+
+    Some(ElbowMetadata {
+        p0,
+        p1,
+        p2,
+        p3,
+        dir_in,
+        dir_out,
+        p1_arm,
+        p2_arm,
+        d: fillet_reach,
+    })
+}
+
 /// Compute elbow metadata for all fillet bends in the geometry.
 ///
 /// Returns one `ElbowMetadata` per detected sharp bend, containing the four
@@ -770,29 +869,15 @@ pub fn compute_elbow_metadata(
     geometry: &CableGeometry,
     config: &CableMeshConfig,
 ) -> Vec<ElbowMetadata> {
-    // Flatten geometry into a single polyline (same as generate_tube_mesh).
-    let mut points: Vec<Vec3> = Vec::new();
-    let mut arc_lengths: Vec<f32> = Vec::new();
-    let mut arc_offset = 0.0_f32;
-
-    for segment in &geometry.segments {
-        if segment.points.len() < 2 {
-            arc_offset += segment.length;
-            continue;
-        }
-        let start_idx = usize::from(!points.is_empty());
-        for i in start_idx..segment.points.len() {
-            points.push(segment.points[i]);
-            arc_lengths.push(segment.arc_lengths[i] + arc_offset);
-        }
-        arc_offset += segment.length;
-    }
+    let flat = flatten_geometry(geometry);
+    let mut points = flat.points;
+    let mut arc_lengths = flat.arc_lengths;
 
     if points.len() < 3 {
         return Vec::new();
     }
 
-    // Trim (same logic as generate_tube_mesh).
+    // Trim (same logic as `generate_tube_mesh`).
     if config.trim_start > 0.0 || config.trim_end > 0.0 {
         let mut tangents = recompute_tangents(&points);
         trim_path(
@@ -805,10 +890,7 @@ pub fn compute_elbow_metadata(
     }
 
     let n = points.len();
-    let tube_radius = config.radius;
-    let bend_radius = tube_radius * config.elbow_bend_radius_multiplier;
-    let angle_threshold_cos = (config.elbow_angle_threshold_deg.to_radians()).cos();
-    let min_bend_r = tube_radius * config.elbow_min_radius_multiplier;
+    let params = ElbowParams::from_config(config);
 
     let mut elbows = Vec::new();
     let mut elbow_idx = 0_usize;
@@ -816,40 +898,13 @@ pub fn compute_elbow_metadata(
     for i in 1..n - 1 {
         let dir_in = (points[i] - points[i - 1]).normalize_or_zero();
         let dir_out = (points[i + 1] - points[i]).normalize_or_zero();
-        let cos_a = dir_in.dot(dir_out).clamp(-1.0, 1.0);
 
-        if cos_a >= angle_threshold_cos {
-            continue;
+        if let Some(meta) =
+            compute_elbow_at_corner(dir_in, dir_out, points[i], config, elbow_idx, &params)
+        {
+            elbows.push(meta);
+            elbow_idx += 1;
         }
-
-        if bend_radius < min_bend_r {
-            continue;
-        }
-
-        let theta = cos_a.acos();
-        let half = theta * 0.5;
-        let fillet_reach = bend_radius * half.tan();
-        let corner = points[i];
-
-        let p0 = corner - dir_in * fillet_reach;
-        let p3 = corner + dir_out * fillet_reach;
-        let max_arm = fillet_reach * 0.95;
-        let (p1_arm, p2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
-        let p1 = p0 + dir_in * p1_arm;
-        let p2 = p3 - dir_out * p2_arm;
-
-        elbows.push(ElbowMetadata {
-            p0,
-            p1,
-            p2,
-            p3,
-            dir_in,
-            dir_out,
-            p1_arm,
-            p2_arm,
-            d: fillet_reach,
-        });
-        elbow_idx += 1;
     }
 
     elbows
@@ -860,6 +915,9 @@ pub fn compute_elbow_metadata(
 /// `equator_ring_base` is the index of the first vertex in the existing tube ring
 /// that forms the equator of this hemisphere. The hemisphere sweeps from that ring
 /// toward a pole in the `cap_direction`.
+///
+/// `CapSide::Inside` duplicates the equator ring with negated normals, negates all
+/// generated normals, and flips winding order for correct interior lighting.
 #[allow(clippy::too_many_arguments)]
 fn add_hemisphere_cap(
     center: &Vec3,
@@ -870,10 +928,29 @@ fn add_hemisphere_cap(
     sides: u32,
     cap_rings: u32,
     equator_ring_base: u32,
+    side: CapSide,
     flip_winding: bool,
     buffers: &mut MeshBuffers,
 ) {
-    let mut prev_ring_base = equator_ring_base;
+    let (normal_sign, winding) = match side {
+        CapSide::Outside => (1.0_f32, flip_winding),
+        CapSide::Inside => (-1.0_f32, false),
+    };
+
+    // For inside caps, duplicate the equator ring with negated normals
+    let mut prev_ring_base = if matches!(side, CapSide::Inside) {
+        let base = buffers.positions.len().to_u32();
+        for j in 0..sides {
+            let orig_idx = (equator_ring_base + j).to_usize();
+            buffers.positions.push(buffers.positions[orig_idx]);
+            let n = buffers.normals[orig_idx];
+            buffers.normals.push([-n[0], -n[1], -n[2]]);
+            buffers.uvs.push([0.5, 0.5]);
+        }
+        base
+    } else {
+        equator_ring_base
+    };
 
     for k in 1..cap_rings {
         let phi = (k.to_f32() / cap_rings.to_f32()) * std::f32::consts::FRAC_PI_2;
@@ -889,23 +966,21 @@ fn add_hemisphere_cap(
 
             let radial = *frame_normal * cos_a + *binormal * sin_a;
             let vertex_pos = ring_center + radial * ring_radius;
-            let vertex_normal = (radial * phi.cos() + *cap_direction * phi.sin()).normalize();
+            let vertex_normal =
+                normal_sign * (radial * phi.cos() + *cap_direction * phi.sin()).normalize();
 
             buffers.positions.push(vertex_pos.to_array());
             buffers.normals.push(vertex_normal.to_array());
             buffers.uvs.push([0.5, 0.5]);
         }
 
-        // Connect to previous ring
         for j in 0..sides {
             let j_next = (j + 1) % sides;
-
             let a = prev_ring_base + j;
             let b = prev_ring_base + j_next;
             let c = new_ring_base + j;
             let d = new_ring_base + j_next;
-
-            push_quad(buffers.indices, a, b, c, d, flip_winding);
+            push_quad(buffers.indices, a, b, c, d, winding);
         }
 
         prev_ring_base = new_ring_base;
@@ -915,7 +990,9 @@ fn add_hemisphere_cap(
     let pole_pos = *center + *cap_direction * radius;
     let pole_idx = buffers.positions.len().to_u32();
     buffers.positions.push(pole_pos.to_array());
-    buffers.normals.push(cap_direction.to_array());
+    buffers
+        .normals
+        .push((normal_sign * *cap_direction).to_array());
     buffers.uvs.push([0.5, 0.5]);
 
     // Fan from last ring to pole
@@ -926,7 +1003,7 @@ fn add_hemisphere_cap(
             prev_ring_base + j,
             prev_ring_base + j_next,
             pole_idx,
-            flip_winding,
+            winding,
         );
     }
 }
@@ -935,15 +1012,21 @@ fn add_hemisphere_cap(
 ///
 /// The disc is perpendicular to the tube tangent at the endpoint.
 /// A center vertex is added and a triangle fan connects it to the ring.
+///
+/// `CapSide::Inside` negates the cap normal and flips winding for interior lighting.
 fn add_flat_cap(
     center: &Vec3,
     cap_direction: &Vec3,
     ring_base: u32,
     sides: u32,
+    side: CapSide,
     flip_winding: bool,
     buffers: &mut MeshBuffers,
 ) {
-    let cap_normal = cap_direction.to_array();
+    let (cap_normal, winding) = match side {
+        CapSide::Outside => (cap_direction.to_array(), flip_winding),
+        CapSide::Inside => ((-*cap_direction).to_array(), true),
+    };
 
     // Duplicate the ring vertices with flat normals so the cap renders flat.
     // The tube's ring vertices have outward-facing normals which cause GPU
@@ -971,119 +1054,7 @@ fn add_flat_cap(
             new_ring_base + j,
             new_ring_base + j_next,
             center_idx,
-            flip_winding,
-        );
-    }
-}
-
-/// Hemisphere cap with inward-facing normals for interior lighting.
-/// Generates its own vertices (not sharing with the outside cap) so normals are independent.
-#[allow(clippy::too_many_arguments)]
-fn add_inside_hemisphere_cap(
-    center: &Vec3,
-    cap_direction: &Vec3,
-    frame_normal: &Vec3,
-    binormal: &Vec3,
-    radius: f32,
-    sides: u32,
-    cap_rings: u32,
-    equator_ring_base: u32,
-    buffers: &mut MeshBuffers,
-) {
-    // Duplicate the equator ring with negated normals as our starting ring
-    let mut prev_ring_base = buffers.positions.len().to_u32();
-    for j in 0..sides {
-        let orig_idx = (equator_ring_base + j).to_usize();
-        buffers.positions.push(buffers.positions[orig_idx]);
-        let n = buffers.normals[orig_idx];
-        buffers.normals.push([-n[0], -n[1], -n[2]]);
-        buffers.uvs.push([0.5, 0.5]);
-    }
-
-    for k in 1..cap_rings {
-        let phi = (k.to_f32() / cap_rings.to_f32()) * std::f32::consts::FRAC_PI_2;
-        let ring_radius = phi.cos() * radius;
-        let along_offset = phi.sin() * radius;
-        let ring_center = *center + *cap_direction * along_offset;
-
-        let new_ring_base = buffers.positions.len().to_u32();
-
-        for j in 0..sides {
-            let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
-            let (sin_a, cos_a) = angle.sin_cos();
-
-            let radial = *frame_normal * cos_a + *binormal * sin_a;
-            let vertex_pos = ring_center + radial * ring_radius;
-            let vertex_normal = -(radial * phi.cos() + *cap_direction * phi.sin()).normalize();
-
-            buffers.positions.push(vertex_pos.to_array());
-            buffers.normals.push(vertex_normal.to_array());
-            buffers.uvs.push([0.5, 0.5]);
-        }
-
-        for j in 0..sides {
-            let j_next = (j + 1) % sides;
-            let a = prev_ring_base + j;
-            let b = prev_ring_base + j_next;
-            let c = new_ring_base + j;
-            let d = new_ring_base + j_next;
-            push_quad(buffers.indices, a, b, c, d, false);
-        }
-
-        prev_ring_base = new_ring_base;
-    }
-
-    // Pole vertex with inward normal
-    let pole_pos = *center + *cap_direction * radius;
-    let pole_idx = buffers.positions.len().to_u32();
-    buffers.positions.push(pole_pos.to_array());
-    buffers.normals.push((-*cap_direction).to_array());
-    buffers.uvs.push([0.5, 0.5]);
-
-    for j in 0..sides {
-        let j_next = (j + 1) % sides;
-        push_tri(
-            buffers.indices,
-            prev_ring_base + j,
-            prev_ring_base + j_next,
-            pole_idx,
-            false,
-        );
-    }
-}
-
-/// Flat disc cap with inward-facing normals for interior lighting.
-fn add_inside_flat_cap(
-    center: &Vec3,
-    cap_direction: &Vec3,
-    ring_base: u32,
-    sides: u32,
-    buffers: &mut MeshBuffers,
-) {
-    let cap_normal = [-cap_direction.x, -cap_direction.y, -cap_direction.z];
-
-    let new_ring_base = buffers.positions.len().to_u32();
-    for j in 0..sides {
-        let orig_idx = (ring_base + j).to_usize();
-        buffers.positions.push(buffers.positions[orig_idx]);
-        buffers.normals.push(cap_normal);
-        let u = j.to_f32() / sides.to_f32();
-        buffers.uvs.push([u, 0.0]);
-    }
-
-    let center_idx = buffers.positions.len().to_u32();
-    buffers.positions.push(center.to_array());
-    buffers.normals.push(cap_normal);
-    buffers.uvs.push([0.5, 0.5]);
-
-    for j in 0..sides {
-        let j_next = (j + 1) % sides;
-        push_tri(
-            buffers.indices,
-            new_ring_base + j,
-            new_ring_base + j_next,
-            center_idx,
-            true,
+            winding,
         );
     }
 }

@@ -6,6 +6,7 @@
 use bevy::math::Quat;
 use bevy::math::Vec3;
 use bevy::reflect::Reflect;
+use bevy_kana::ToF32;
 
 /// Where a cable connects to an object.
 #[derive(Clone, Copy, Debug)]
@@ -76,6 +77,41 @@ impl Obstacle {
     /// World-space AABB maximum corner (ignoring rotation for axis-aligned tests).
     #[must_use]
     pub fn aabb_max(&self) -> Vec3 { self.position + self.half_extents }
+
+    /// Check if a point is inside this obstacle's AABB, expanded by `margin`.
+    #[must_use]
+    pub fn contains_point(&self, pos: Vec3, margin: f32) -> bool {
+        let min = self.aabb_min() - Vec3::splat(margin);
+        let max = self.aabb_max() + Vec3::splat(margin);
+        pos.x >= min.x
+            && pos.x <= max.x
+            && pos.y >= min.y
+            && pos.y <= max.y
+            && pos.z >= min.z
+            && pos.z <= max.z
+    }
+}
+
+/// Check if a point is inside any obstacle's AABB, expanded by `margin`.
+#[must_use]
+pub fn is_point_in_any_obstacle(pos: Vec3, obstacles: &[Obstacle], margin: f32) -> bool {
+    obstacles.iter().any(|obs| obs.contains_point(pos, margin))
+}
+
+/// Check if any obstacle intersects a line segment by sampling `steps` evenly-spaced points.
+#[must_use]
+pub fn is_segment_blocked(
+    start: Vec3,
+    end: Vec3,
+    obstacles: &[Obstacle],
+    margin: f32,
+    steps: u32,
+) -> bool {
+    (0..=steps).any(|i| {
+        let t = i.to_f32() / steps.to_f32();
+        let point = start.lerp(end, t);
+        is_point_in_any_obstacle(point, obstacles, margin)
+    })
 }
 
 /// Everything a solver needs to compute a route.
@@ -89,6 +125,18 @@ pub struct RouteRequest<'a> {
     pub obstacles:  &'a [Obstacle],
     /// Number of sample points per segment.
     pub resolution: u32,
+}
+
+impl RouteRequest<'_> {
+    /// Returns the request's resolution if set, otherwise falls back to `default`.
+    #[must_use]
+    pub const fn effective_resolution(&self, default: u32) -> u32 {
+        if self.resolution > 0 {
+            self.resolution
+        } else {
+            default
+        }
+    }
 }
 
 /// A single continuous curve between two waypoints.
@@ -144,6 +192,18 @@ impl CableSegment {
             arc_lengths,
             length: cumulative,
         }
+    }
+
+    /// Create a segment by evenly sampling `n` points along a straight line.
+    #[must_use]
+    pub fn straight_line(start: Vec3, end: Vec3, n: usize) -> Self {
+        let n = n.max(2);
+        let mut points = Vec::with_capacity(n);
+        for i in 0..n {
+            let t = i.to_f32() / (n - 1).to_f32();
+            points.push(start.lerp(end, t));
+        }
+        Self::from_points(points)
     }
 }
 

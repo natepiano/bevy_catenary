@@ -12,6 +12,8 @@ use super::constants::DEFAULT_GRID_SIZE;
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
 use super::solver::PathPlanner;
 use super::types::Obstacle;
+use super::types::is_point_in_any_obstacle;
+use super::types::is_segment_blocked;
 
 /// 3D grid cell coordinate.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -110,17 +112,7 @@ impl AStarPlanner {
 
     /// Check if a world-space point is inside any obstacle (with margin).
     fn is_blocked(&self, pos: Vec3, obstacles: &[Obstacle]) -> bool {
-        let margin = self.margin;
-        obstacles.iter().any(|obs| {
-            let min = obs.aabb_min() - Vec3::splat(margin);
-            let max = obs.aabb_max() + Vec3::splat(margin);
-            pos.x >= min.x
-                && pos.x <= max.x
-                && pos.y >= min.y
-                && pos.y <= max.y
-                && pos.z >= min.z
-                && pos.z <= max.z
-        })
+        is_point_in_any_obstacle(pos, obstacles, self.margin)
     }
 
     /// 26-connected neighbors (all adjacent cells including diagonals).
@@ -266,15 +258,7 @@ impl PathPlanner for AStarPlanner {
 impl AStarPlanner {
     /// Check if any obstacle intersects the direct line from start to end.
     fn is_direct_path_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        let steps = 20;
-        for i in 0..=steps {
-            let t = i.to_f32() / steps.to_f32();
-            let point = start.lerp(end, t);
-            if self.is_blocked(point, obstacles) {
-                return true;
-            }
-        }
-        false
+        is_segment_blocked(start, end, obstacles, self.margin, 20)
     }
 }
 

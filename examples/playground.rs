@@ -176,8 +176,8 @@ struct TubeLight {
 /// Tracks paused state and frozen elapsed time for tube light animation.
 #[derive(Resource, Default)]
 struct TubeLightPaused {
-    paused:     bool,
-    frozen_at:  f32,
+    paused:    bool,
+    frozen_at: f32,
 }
 
 /// Marker to exclude a cable from global +/- slack adjustment.
@@ -559,8 +559,8 @@ fn setup_section_cap_styles(
                 resolution: 0,
             },
             CableMeshConfig {
-                radius:     TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
-                material:   Some(transparent_mat),
+                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                material: Some(transparent_mat),
                 face_sides: bevy_catenary::FaceSides::Both,
                 ..default()
             },
@@ -582,8 +582,8 @@ fn setup_section_cap_styles(
                 resolution: 0,
             },
             CableMeshConfig {
-                radius:     TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
-                material:   Some(cable_mat.clone()),
+                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                material: Some(cable_mat.clone()),
                 face_sides: bevy_catenary::FaceSides::Both,
                 ..default()
             },
@@ -605,31 +605,32 @@ fn setup_section_cap_styles(
                 resolution: 0,
             },
             CableMeshConfig {
-                radius:     TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
-                material:   Some(cable_mat.clone()),
+                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                material: Some(cable_mat.clone()),
                 face_sides: bevy_catenary::FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
         ))
         .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, right_start).with_cap(CapStyle::Round));
+            parent
+                .spawn(CableEndpoint::new(CableEnd::Start, right_start).with_cap(CapStyle::Round));
             parent.spawn(CableEndpoint::new(CableEnd::End, right_end).with_cap(CapStyle::None));
         });
 
     // Animated point lights inside each tube, staggered start positions.
     // All oscillate at the same speed (2s each direction, 0.5s pause at ends).
     let tubes = [
-        (left_start, left_end, 0.3),    // left: start near middle
-        (mid_start, mid_end, 0.7),      // middle: start near far end
-        (right_start, right_end, 0.0),  // right: start at open end
+        (left_start, left_end, 0.3),   // left: start near middle
+        (mid_start, mid_end, 0.7),     // middle: start near far end
+        (right_start, right_end, 0.0), // right: start at open end
     ];
     for (start, end, initial_t) in tubes {
         commands.spawn((
             PointLight {
-                color:     Color::srgb(1.0, 0.95, 0.8),
+                color: Color::srgb(1.0, 0.95, 0.8),
                 intensity: 20000.0,
-                range:     2.0,
+                range: 2.0,
                 shadows_enabled: false,
                 ..default()
             },
@@ -1085,7 +1086,7 @@ fn spawn_detach_demo(
         .id();
 
     let anchor_pos = Vec3::new(cx + 2.0, NODE_Y, -1.5);
-    spawn_node_cube_with_marker(commands, node_mesh, node_mat, anchor_pos);
+    spawn_node_cube(commands, node_mesh, node_mat, anchor_pos).insert(DetachDemoEntity);
 
     commands
         .spawn((
@@ -1125,7 +1126,7 @@ fn spawn_detach_demo(
         .id();
 
     let anchor_pos = Vec3::new(cx + 2.0, NODE_Y, 1.5);
-    spawn_node_cube_with_marker(commands, node_mesh, node_mat, anchor_pos);
+    spawn_node_cube(commands, node_mesh, node_mat, anchor_pos).insert(DetachDemoEntity);
 
     commands
         .spawn((
@@ -1402,37 +1403,20 @@ fn spawn_node_pair(
     }
 }
 
-fn spawn_node_cube(
-    commands: &mut Commands,
+fn spawn_node_cube<'a>(
+    commands: &'a mut Commands,
     mesh: &Handle<Mesh>,
     material: &Handle<StandardMaterial>,
     pos: Vec3,
-) {
-    commands
-        .spawn((
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(material.clone()),
-            Transform::from_translation(pos),
-            NodeCube,
-        ))
-        .observe(on_mesh_clicked);
-}
-
-fn spawn_node_cube_with_marker(
-    commands: &mut Commands,
-    mesh: &Handle<Mesh>,
-    material: &Handle<StandardMaterial>,
-    pos: Vec3,
-) {
-    commands
-        .spawn((
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(material.clone()),
-            Transform::from_translation(pos),
-            NodeCube,
-            DetachDemoEntity,
-        ))
-        .observe(on_mesh_clicked);
+) -> EntityCommands<'a> {
+    let mut ec = commands.spawn((
+        Mesh3d(mesh.clone()),
+        MeshMaterial3d(material.clone()),
+        Transform::from_translation(pos),
+        NodeCube,
+    ));
+    ec.observe(on_mesh_clicked);
+    ec
 }
 
 // ============================================================================
@@ -1454,12 +1438,22 @@ fn navigate_to_section(
             .duration(Duration::from_millis(NAV_DURATION_MS))
             .easing(EaseFunction::CubicInOut),
     );
+    update_nav_label(label_query, section);
+}
+
+fn update_nav_label(label_query: &mut Query<&mut Text, With<NavLabel>>, section: usize) {
     for mut text in label_query.iter_mut() {
         **text = format!(
             "{} / {SECTION_COUNT} - {}",
             section + 1,
             SECTION_TITLES[section]
         );
+    }
+}
+
+fn deselect_all(commands: &mut Commands, selected: &Query<Entity, With<Selected>>) {
+    for entity in selected {
+        commands.entity(entity).remove::<Selected>();
     }
 }
 
@@ -1529,6 +1523,26 @@ fn handle_nav_buttons(
 // Drag system
 // ============================================================================
 
+/// Intersect a camera ray with a horizontal Y-plane.
+fn cursor_ray_y_plane(
+    camera: &Camera,
+    cam_tf: &GlobalTransform,
+    window: &Window,
+    y_height: f32,
+) -> Option<Vec3> {
+    let cursor = window.cursor_position()?;
+    let ray = camera.viewport_to_world(cam_tf, cursor).ok()?;
+    let denom = ray.direction.y;
+    if denom.abs() < 1e-6 {
+        return None;
+    }
+    let t = (y_height - ray.origin.y) / denom;
+    if t < 0.0 {
+        return None;
+    }
+    Some(ray.origin + ray.direction * t)
+}
+
 fn handle_drag(
     mut drag_state: ResMut<DragState>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
@@ -1560,23 +1574,9 @@ fn handle_drag(
     let Ok(window) = windows.single() else {
         return;
     };
-    let Some(cursor) = window.cursor_position() else {
+    let Some(hit) = cursor_ray_y_plane(camera, cam_tf, window, drag_state.y_height) else {
         return;
     };
-    let Ok(ray) = camera.viewport_to_world(cam_tf, cursor) else {
-        return;
-    };
-
-    // Intersect ray with Y = drag_state.y_height plane
-    let denom = ray.direction.y;
-    if denom.abs() < 1e-6 {
-        return;
-    }
-    let t = (drag_state.y_height - ray.origin.y) / denom;
-    if t < 0.0 {
-        return;
-    }
-    let hit = ray.origin + ray.direction * t;
 
     if let Ok(mut transform) = draggables.get_mut(dragged) {
         transform.translation.x = hit.x + drag_state.grab_offset.x;
@@ -1609,21 +1609,9 @@ fn on_drag_start(
     let Ok(window) = windows.single() else {
         return;
     };
-    let Some(cursor) = window.cursor_position() else {
+    let Some(hit) = cursor_ray_y_plane(camera, cam_tf, window, tf.translation.y) else {
         return;
     };
-    let Ok(ray) = camera.viewport_to_world(cam_tf, cursor) else {
-        return;
-    };
-    let denom = ray.direction.y;
-    if denom.abs() < 1e-6 {
-        return;
-    }
-    let t = (tf.translation.y - ray.origin.y) / denom;
-    if t < 0.0 {
-        return;
-    }
-    let hit = ray.origin + ray.direction * t;
     drag_state.grab_offset = Vec2::new(tf.translation.x - hit.x, tf.translation.z - hit.z);
 }
 
@@ -1677,13 +1665,7 @@ fn update_current_section_from_camera(
 
     if nearest != current.0 {
         current.0 = nearest;
-        for mut text in label_query.iter_mut() {
-            **text = format!(
-                "{} / {SECTION_COUNT} - {}",
-                nearest + 1,
-                SECTION_TITLES[nearest]
-            );
-        }
+        update_nav_label(&mut label_query, nearest);
     }
 }
 
@@ -1824,9 +1806,7 @@ fn on_mesh_clicked(
     mut commands: Commands,
     selected: Query<Entity, With<Selected>>,
 ) {
-    for entity in &selected {
-        commands.entity(entity).remove::<Selected>();
-    }
+    deselect_all(&mut commands, &selected);
 
     let clicked = click.entity;
     let camera = click.hit.camera;
@@ -1847,9 +1827,7 @@ fn on_ground_clicked(
     bounds: Res<SectionBounds>,
     current: Res<CurrentSection>,
 ) {
-    for entity in &selected {
-        commands.entity(entity).remove::<Selected>();
-    }
+    deselect_all(&mut commands, &selected);
 
     // Zoom back to current section (not full scene)
     commands.trigger(

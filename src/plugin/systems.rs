@@ -11,6 +11,7 @@ use super::components::ComputedCableGeometry;
 use super::components::DetachPolicy;
 use super::mesh::CableMeshConfig;
 use super::mesh::generate_tube_mesh;
+use crate::routing::MIN_SEGMENT_LENGTH;
 use crate::routing::RouteRequest;
 
 /// Stores the mesh asset handle for a cable's generated tube mesh.
@@ -22,8 +23,14 @@ pub struct CableMeshHandle(pub Handle<Mesh>);
 #[derive(Component)]
 pub struct CableMeshChild(pub Entity);
 
-/// Minimum distance between endpoints before route computation is skipped.
-const MIN_CABLE_LENGTH: f32 = 0.001;
+/// Query type for accessing cable geometry, config, and mesh handles.
+type CableMeshQuery<'w> = (
+    &'w ComputedCableGeometry,
+    &'w CableMeshConfig,
+    &'w Children,
+    Option<&'w CableMeshHandle>,
+    Option<&'w CableMeshChild>,
+);
 
 /// Computes cable routes reactively when endpoints or targets change.
 ///
@@ -82,7 +89,7 @@ pub fn compute_cable_routes(
         };
 
         // Guard: skip degenerate zero-length cables
-        if start.distance(end) < MIN_CABLE_LENGTH {
+        if start.distance(end) < MIN_SEGMENT_LENGTH {
             continue;
         }
 
@@ -128,22 +135,7 @@ pub fn render_cable_gizmos(
 
         // Draw waypoints as small crosses
         for &wp in &geometry.waypoints {
-            let size = 0.05;
-            gizmos.line(
-                wp - Vec3::X * size,
-                wp + Vec3::X * size,
-                Color::srgb(0.0, 1.0, 0.0),
-            );
-            gizmos.line(
-                wp - Vec3::Y * size,
-                wp + Vec3::Y * size,
-                Color::srgb(0.0, 1.0, 0.0),
-            );
-            gizmos.line(
-                wp - Vec3::Z * size,
-                wp + Vec3::Z * size,
-                Color::srgb(0.0, 1.0, 0.0),
-            );
+            draw_dot(&mut gizmos, wp, 0.05, Color::srgb(0.0, 1.0, 0.0));
         }
     }
 }
@@ -173,18 +165,18 @@ pub fn render_debug_gizmos(
 
             // Draw segment start/end as red dots
             if let Some(first) = segment.points.first() {
-                draw_dot(&mut gizmos, *first, Color::srgb(1.0, 0.0, 0.0));
+                draw_dot(&mut gizmos, *first, 0.03, Color::srgb(1.0, 0.0, 0.0));
             }
             if let Some(last) = segment.points.last() {
-                draw_dot(&mut gizmos, *last, Color::srgb(1.0, 0.0, 0.0));
+                draw_dot(&mut gizmos, *last, 0.03, Color::srgb(1.0, 0.0, 0.0));
             }
         }
     }
 }
 
 /// Draw a small cross at a point (debug marker).
-fn draw_dot(gizmos: &mut Gizmos<CableGizmoGroup>, point: Vec3, color: Color) {
-    let s = 0.03;
+fn draw_dot(gizmos: &mut Gizmos<CableGizmoGroup>, point: Vec3, size: f32, color: Color) {
+    let s = size;
     gizmos.line(point - Vec3::X * s, point + Vec3::X * s, color);
     gizmos.line(point - Vec3::Y * s, point + Vec3::Y * s, color);
     gizmos.line(point - Vec3::Z * s, point + Vec3::Z * s, color);
@@ -201,13 +193,7 @@ pub struct CableDebugEnabled(pub bool);
 /// On subsequent inserts: mutates the existing mesh asset in place (no entity churn).
 pub fn on_geometry_computed(
     trigger: On<Insert, ComputedCableGeometry>,
-    cables: Query<(
-        &ComputedCableGeometry,
-        &CableMeshConfig,
-        &Children,
-        Option<&CableMeshHandle>,
-        Option<&CableMeshChild>,
-    )>,
+    cables: Query<CableMeshQuery>,
     endpoints: Query<&CableEndpoint>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     mut commands: Commands,
