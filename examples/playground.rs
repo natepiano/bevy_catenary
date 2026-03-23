@@ -166,6 +166,20 @@ struct Despawnable;
 #[derive(Component)]
 struct DetachDemoEntity;
 
+/// Animates a point light along a tube's center axis, oscillating front to back.
+#[derive(Component)]
+struct TubeLight {
+    start: Vec3,
+    end:   Vec3,
+}
+
+/// Tracks paused state and frozen elapsed time for tube light animation.
+#[derive(Resource, Default)]
+struct TubeLightPaused {
+    paused:     bool,
+    frozen_at:  f32,
+}
+
 /// Marker to exclude a cable from global +/- slack adjustment.
 #[derive(Component)]
 struct SlackLocked;
@@ -268,6 +282,7 @@ fn main() {
         .init_resource::<CableSettings>()
         .init_resource::<InspectorVisible>()
         .init_resource::<DragState>()
+        .init_resource::<TubeLightPaused>()
         .insert_resource(CurrentSection(0))
         .add_systems(
             Startup,
@@ -284,6 +299,7 @@ fn main() {
                 handle_drag,
                 sync_cable_settings.run_if(resource_changed::<CableSettings>),
                 align_connector_to_cable,
+                animate_tube_light,
             ),
         )
         .run();
@@ -410,7 +426,7 @@ fn setup_sections(
         &mut materials,
         SECTION_X[1],
     ));
-    setup_section_cap_styles(&mut commands, &cable_mat);
+    setup_section_cap_styles(&mut commands, &mut materials, &cable_mat);
 
     bounds.push(spawn_section_bounds(
         &mut commands,
@@ -514,42 +530,113 @@ fn setup_section_catenary(
 }
 
 /// Section 1: Three cables with different cap combinations — each end is freely choosable.
-/// Left: Round/Round, Middle: Flat/Round, Right: None/Round.
-/// The far end is always Round to show that start and end caps are independent.
+/// Left: Round/Round, Middle: Round/Flat, Right: Round/None.
+/// The near end (facing the camera) varies to show that each end's cap is freely choosable.
 const CAP_STYLE_RADIUS_MULTIPLIER: f32 = 5.0;
 
-fn setup_section_cap_styles(commands: &mut Commands, cable_mat: &Handle<StandardMaterial>) {
+fn setup_section_cap_styles(
+    commands: &mut Commands,
+    materials: &mut Assets<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
+) {
     let cx = SECTION_X[1];
-    let offsets = [-3.0_f32, 0.0, 3.0];
-    let start_caps = [CapStyle::Round, CapStyle::flat(), CapStyle::None];
 
-    for (x_off, start_cap) in offsets.into_iter().zip(start_caps) {
-        let start = Vec3::new(cx + x_off - 1.0, NODE_Y, -0.8);
-        let end = Vec3::new(cx + x_off + 1.0, NODE_Y, 0.8);
-        let sides = if matches!(start_cap, CapStyle::None) {
-            bevy_catenary::FaceSides::Both
-        } else {
-            bevy_catenary::FaceSides::Outside
-        };
-        commands
-            .spawn((
-                Cable {
-                    solver:     Solver::Linear,
-                    obstacles:  vec![],
-                    resolution: 0,
-                },
-                CableMeshConfig {
-                    radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
-                    material: Some(cable_mat.clone()),
-                    face_sides: sides,
-                    ..default()
-                },
-                RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
-            ))
-            .with_children(|parent| {
-                parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(start_cap));
-                parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(CapStyle::Round));
-            });
+    // Transparent material for the left tube (Round/Round) — 80% transparent
+    let transparent_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.85, 0.55, 0.2, 0.2),
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+
+    // Left: Round/Round — transparent, both sides, light inside shines through
+    let left_start = Vec3::new(cx - 4.0, NODE_Y, -0.8);
+    let left_end = Vec3::new(cx - 2.0, NODE_Y, 0.8);
+    commands
+        .spawn((
+            Cable {
+                solver:     Solver::Linear,
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            CableMeshConfig {
+                radius:     TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                material:   Some(transparent_mat),
+                face_sides: bevy_catenary::FaceSides::Both,
+                ..default()
+            },
+            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
+        ))
+        .with_children(|parent| {
+            parent.spawn(CableEndpoint::new(CableEnd::Start, left_start).with_cap(CapStyle::Round));
+            parent.spawn(CableEndpoint::new(CableEnd::End, left_end).with_cap(CapStyle::Round));
+        });
+
+    // Middle: Round/Flat — open back (None on start) so we can see the flat cap lit from inside
+    let mid_start = Vec3::new(cx - 1.0, NODE_Y, -0.8);
+    let mid_end = Vec3::new(cx + 1.0, NODE_Y, 0.8);
+    commands
+        .spawn((
+            Cable {
+                solver:     Solver::Linear,
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            CableMeshConfig {
+                radius:     TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                material:   Some(cable_mat.clone()),
+                face_sides: bevy_catenary::FaceSides::Both,
+                ..default()
+            },
+            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
+        ))
+        .with_children(|parent| {
+            parent.spawn(CableEndpoint::new(CableEnd::Start, mid_start).with_cap(CapStyle::None));
+            parent.spawn(CableEndpoint::new(CableEnd::End, mid_end).with_cap(CapStyle::flat()));
+        });
+
+    // Right: Round/None — open front, round cap at back
+    let right_start = Vec3::new(cx + 2.0, NODE_Y, -0.8);
+    let right_end = Vec3::new(cx + 4.0, NODE_Y, 0.8);
+    commands
+        .spawn((
+            Cable {
+                solver:     Solver::Linear,
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            CableMeshConfig {
+                radius:     TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                material:   Some(cable_mat.clone()),
+                face_sides: bevy_catenary::FaceSides::Both,
+                ..default()
+            },
+            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
+        ))
+        .with_children(|parent| {
+            parent.spawn(CableEndpoint::new(CableEnd::Start, right_start).with_cap(CapStyle::Round));
+            parent.spawn(CableEndpoint::new(CableEnd::End, right_end).with_cap(CapStyle::None));
+        });
+
+    // Animated point lights inside each tube, staggered start positions.
+    // All oscillate at the same speed (2s each direction, 0.5s pause at ends).
+    let tubes = [
+        (left_start, left_end, 0.3),    // left: start near middle
+        (mid_start, mid_end, 0.7),      // middle: start near far end
+        (right_start, right_end, 0.0),  // right: start at open end
+    ];
+    for (start, end, initial_t) in tubes {
+        commands.spawn((
+            PointLight {
+                color:     Color::srgb(1.0, 0.95, 0.8),
+                intensity: 20000.0,
+                range:     2.0,
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(start.lerp(end, initial_t)),
+            NotShadowCaster,
+            TubeLight { start, end },
+        ));
     }
 }
 
@@ -929,6 +1016,46 @@ fn align_connector_to_cable(
     }
 }
 
+/// Oscillates a point light along a tube's center axis.
+/// 2s travel each direction, 0.5s pause at each end. Esc toggles pause.
+fn animate_tube_light(
+    time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut paused: ResMut<TubeLightPaused>,
+    mut lights: Query<(&TubeLight, &mut Transform)>,
+) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        paused.paused = !paused.paused;
+        if paused.paused {
+            paused.frozen_at = time.elapsed_secs();
+        }
+    }
+
+    let elapsed = if paused.paused {
+        paused.frozen_at
+    } else {
+        time.elapsed_secs()
+    };
+
+    // 0.5s pause | 2s travel forward | 0.5s pause | 2s travel back = 5s cycle
+    let cycle = 5.0_f32;
+    let phase = elapsed % cycle;
+
+    let t = if phase < 0.5 {
+        0.0
+    } else if phase < 2.5 {
+        (phase - 0.5) / 2.0
+    } else if phase < 3.0 {
+        1.0
+    } else {
+        1.0 - (phase - 3.0) / 2.0
+    };
+
+    for (tube, mut transform) in &mut lights {
+        transform.translation = tube.start.lerp(tube.end, t);
+    }
+}
+
 /// Spawn the detach demo section (can be called again on reset).
 fn spawn_detach_demo(
     commands: &mut Commands,
@@ -1039,7 +1166,7 @@ fn spawn_section_infos(commands: &mut Commands, camera: Entity) {
     let section_texts: [(usize, &str); 6] = [
         (
             1,
-            "Left: Round    Middle: Flat    Right: None\nSame cap on both ends (can be different)",
+            "Round (transparent) / Flat / None\nEnd caps are independent\nEsc - Pause lights",
         ),
         (2, "Catenary    Linear    Orthogonal"),
         (3, "Drag blue boxes"),

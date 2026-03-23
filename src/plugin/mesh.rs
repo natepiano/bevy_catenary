@@ -222,25 +222,49 @@ fn add_end_caps(
         return;
     }
 
+    let needs_inside = matches!(config.face_sides, FaceSides::Inside | FaceSides::Both);
+    let needs_outside = matches!(config.face_sides, FaceSides::Outside | FaceSides::Both);
+    let negate_outside = matches!(config.face_sides, FaceSides::Inside);
+
     match config.cap_start {
         CapStyle::Round => {
             let (start_normal, start_binormal) = frames[0];
-            add_hemisphere_cap(
-                &all_points[0],
-                &(-all_tangents[0]),
-                &start_normal,
-                &start_binormal,
-                config.radius,
-                sides,
-                cap_rings,
-                0,
-                true,
-                buffers,
-            );
+            if needs_outside {
+                add_hemisphere_cap(
+                    &all_points[0],
+                    &(-all_tangents[0]),
+                    &start_normal,
+                    &start_binormal,
+                    config.radius,
+                    sides,
+                    cap_rings,
+                    0,
+                    !negate_outside,
+                    buffers,
+                );
+            }
+            if needs_inside {
+                add_inside_hemisphere_cap(
+                    &all_points[0],
+                    &(-all_tangents[0]),
+                    &start_normal,
+                    &start_binormal,
+                    config.radius,
+                    sides,
+                    cap_rings,
+                    0,
+                    buffers,
+                );
+            }
         },
         CapStyle::Flat { ref normal } => {
             let dir = normal.unwrap_or(-all_tangents[0]);
-            add_flat_cap(&all_points[0], &dir, 0, sides, true, buffers);
+            if needs_outside {
+                add_flat_cap(&all_points[0], &dir, 0, sides, !negate_outside, buffers);
+            }
+            if needs_inside {
+                add_inside_flat_cap(&all_points[0], &dir, 0, sides, buffers);
+            }
         },
         CapStyle::None => {},
     }
@@ -250,29 +274,49 @@ fn add_end_caps(
     match config.cap_end {
         CapStyle::Round => {
             let (end_normal, end_binormal) = frames[last];
-            add_hemisphere_cap(
-                &all_points[last],
-                &all_tangents[last],
-                &end_normal,
-                &end_binormal,
-                config.radius,
-                sides,
-                cap_rings,
-                last_ring_base,
-                false,
-                buffers,
-            );
+            if needs_outside {
+                add_hemisphere_cap(
+                    &all_points[last],
+                    &all_tangents[last],
+                    &end_normal,
+                    &end_binormal,
+                    config.radius,
+                    sides,
+                    cap_rings,
+                    last_ring_base,
+                    negate_outside,
+                    buffers,
+                );
+            }
+            if needs_inside {
+                add_inside_hemisphere_cap(
+                    &all_points[last],
+                    &all_tangents[last],
+                    &end_normal,
+                    &end_binormal,
+                    config.radius,
+                    sides,
+                    cap_rings,
+                    last_ring_base,
+                    buffers,
+                );
+            }
         },
         CapStyle::Flat { ref normal } => {
             let dir = normal.unwrap_or(all_tangents[last]);
-            add_flat_cap(
-                &all_points[last],
-                &dir,
-                last_ring_base,
-                sides,
-                false,
-                buffers,
-            );
+            if needs_outside {
+                add_flat_cap(
+                    &all_points[last],
+                    &dir,
+                    last_ring_base,
+                    sides,
+                    negate_outside,
+                    buffers,
+                );
+            }
+            if needs_inside {
+                add_inside_flat_cap(&all_points[last], &dir, last_ring_base, sides, buffers);
+            }
         },
         CapStyle::None => {},
     }
@@ -320,6 +364,7 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(point_count * sides.to_usize());
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(point_count * sides.to_usize());
     let mut indices: Vec<u32> = Vec::new();
+    let mut inside_indices: Vec<u32> = Vec::new();
 
     for (i, ((point, ..), (frame_normal, binormal))) in all_points
         .iter()
@@ -356,6 +401,8 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
                 let next_j = next_base + j;
                 let next_j_next = next_base + j_next;
 
+                // Outside quads go into `indices`, inside quads go into `inside_indices`
+                // so they can be cleanly separated for the normal-duplication pass.
                 match config.face_sides {
                     FaceSides::Outside => push_quad(
                         &mut indices,
@@ -377,11 +424,48 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
                             next_j_next,
                             false,
                         );
-                        push_quad(&mut indices, curr_j, curr_j_next, next_j, next_j_next, true);
+                        push_quad(
+                            &mut inside_indices,
+                            curr_j,
+                            curr_j_next,
+                            next_j,
+                            next_j_next,
+                            true,
+                        );
                     },
                 }
             }
         }
+    }
+
+    // For `Inside` or `Both`, normals must point inward so interior faces receive light.
+    match config.face_sides {
+        FaceSides::Outside => {},
+        FaceSides::Inside => {
+            for n in normals.iter_mut() {
+                n[0] = -n[0];
+                n[1] = -n[1];
+                n[2] = -n[2];
+            }
+        },
+        FaceSides::Both => {
+            let original_vert_count = positions.len().to_u32();
+
+            // Duplicate all tube ring vertices with negated normals for inside faces
+            let dup_positions: Vec<[f32; 3]> = positions.clone();
+            let dup_normals: Vec<[f32; 3]> =
+                normals.iter().map(|n| [-n[0], -n[1], -n[2]]).collect();
+            let dup_uvs: Vec<[f32; 2]> = uvs.clone();
+            positions.extend(dup_positions);
+            normals.extend(dup_normals);
+            uvs.extend(dup_uvs);
+
+            // Offset all inside indices to reference the duplicated (inward-normal) vertices
+            for idx in inside_indices.iter_mut() {
+                *idx += original_vert_count;
+            }
+            indices.extend(inside_indices);
+        },
     }
 
     // Add caps at ends
@@ -888,6 +972,118 @@ fn add_flat_cap(
             new_ring_base + j_next,
             center_idx,
             flip_winding,
+        );
+    }
+}
+
+/// Hemisphere cap with inward-facing normals for interior lighting.
+/// Generates its own vertices (not sharing with the outside cap) so normals are independent.
+#[allow(clippy::too_many_arguments)]
+fn add_inside_hemisphere_cap(
+    center: &Vec3,
+    cap_direction: &Vec3,
+    frame_normal: &Vec3,
+    binormal: &Vec3,
+    radius: f32,
+    sides: u32,
+    cap_rings: u32,
+    equator_ring_base: u32,
+    buffers: &mut MeshBuffers,
+) {
+    // Duplicate the equator ring with negated normals as our starting ring
+    let mut prev_ring_base = buffers.positions.len().to_u32();
+    for j in 0..sides {
+        let orig_idx = (equator_ring_base + j).to_usize();
+        buffers.positions.push(buffers.positions[orig_idx]);
+        let n = buffers.normals[orig_idx];
+        buffers.normals.push([-n[0], -n[1], -n[2]]);
+        buffers.uvs.push([0.5, 0.5]);
+    }
+
+    for k in 1..cap_rings {
+        let phi = (k.to_f32() / cap_rings.to_f32()) * std::f32::consts::FRAC_PI_2;
+        let ring_radius = phi.cos() * radius;
+        let along_offset = phi.sin() * radius;
+        let ring_center = *center + *cap_direction * along_offset;
+
+        let new_ring_base = buffers.positions.len().to_u32();
+
+        for j in 0..sides {
+            let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
+            let (sin_a, cos_a) = angle.sin_cos();
+
+            let radial = *frame_normal * cos_a + *binormal * sin_a;
+            let vertex_pos = ring_center + radial * ring_radius;
+            let vertex_normal = -(radial * phi.cos() + *cap_direction * phi.sin()).normalize();
+
+            buffers.positions.push(vertex_pos.to_array());
+            buffers.normals.push(vertex_normal.to_array());
+            buffers.uvs.push([0.5, 0.5]);
+        }
+
+        for j in 0..sides {
+            let j_next = (j + 1) % sides;
+            let a = prev_ring_base + j;
+            let b = prev_ring_base + j_next;
+            let c = new_ring_base + j;
+            let d = new_ring_base + j_next;
+            push_quad(buffers.indices, a, b, c, d, false);
+        }
+
+        prev_ring_base = new_ring_base;
+    }
+
+    // Pole vertex with inward normal
+    let pole_pos = *center + *cap_direction * radius;
+    let pole_idx = buffers.positions.len().to_u32();
+    buffers.positions.push(pole_pos.to_array());
+    buffers.normals.push((-*cap_direction).to_array());
+    buffers.uvs.push([0.5, 0.5]);
+
+    for j in 0..sides {
+        let j_next = (j + 1) % sides;
+        push_tri(
+            buffers.indices,
+            prev_ring_base + j,
+            prev_ring_base + j_next,
+            pole_idx,
+            false,
+        );
+    }
+}
+
+/// Flat disc cap with inward-facing normals for interior lighting.
+fn add_inside_flat_cap(
+    center: &Vec3,
+    cap_direction: &Vec3,
+    ring_base: u32,
+    sides: u32,
+    buffers: &mut MeshBuffers,
+) {
+    let cap_normal = [-cap_direction.x, -cap_direction.y, -cap_direction.z];
+
+    let new_ring_base = buffers.positions.len().to_u32();
+    for j in 0..sides {
+        let orig_idx = (ring_base + j).to_usize();
+        buffers.positions.push(buffers.positions[orig_idx]);
+        buffers.normals.push(cap_normal);
+        let u = j.to_f32() / sides.to_f32();
+        buffers.uvs.push([u, 0.0]);
+    }
+
+    let center_idx = buffers.positions.len().to_u32();
+    buffers.positions.push(center.to_array());
+    buffers.normals.push(cap_normal);
+    buffers.uvs.push([0.5, 0.5]);
+
+    for j in 0..sides {
+        let j_next = (j + 1) % sides;
+        push_tri(
+            buffers.indices,
+            new_ring_base + j,
+            new_ring_base + j_next,
+            center_idx,
+            true,
         );
     }
 }
