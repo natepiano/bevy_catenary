@@ -67,7 +67,7 @@ const SECTION_X: [f32; SECTION_COUNT] = [
     -4.0 * SECTION_SPACING,
     -3.0 * SECTION_SPACING,
     -2.0 * SECTION_SPACING,
-    -1.0 * SECTION_SPACING,
+    -SECTION_SPACING,
     0.0 * SECTION_SPACING,
     1.0 * SECTION_SPACING,
     2.0 * SECTION_SPACING,
@@ -184,13 +184,20 @@ struct TubeLightPaused {
 #[derive(Component)]
 struct SlackLocked;
 
+/// How a connector model aligns to the cable tangent.
+enum ConnectorAlignment {
+    /// Maintains a consistent up direction — no roll as the cable sweeps around.
+    Fixed,
+    /// Follows the cable's rotation-minimizing frame — rolls with the cable's twist.
+    Rotating,
+}
+
 /// Links a connector model to its cable entity and which end it represents.
 #[derive(Component)]
 struct ConnectorEnd {
-    cable:    Entity,
-    end:      CableEnd,
-    /// Base rotation to apply before aligning to the cable tangent.
-    rotation: Quat,
+    cable:     Entity,
+    end:       CableEnd,
+    alignment: ConnectorAlignment,
 }
 
 /// Marker for cables with a radius multiplier relative to the inspector setting.
@@ -410,102 +417,102 @@ fn setup_sections(
         ..default()
     });
 
+    let bounds = spawn_all_sections(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &node_mesh,
+        &node_mat,
+        &cable_mat,
+        &asset_server,
+    );
+    commands.insert_resource(SectionBounds(bounds));
+}
+
+fn spawn_all_sections(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    node_mesh: &Handle<Mesh>,
+    node_mat: &Handle<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
+    asset_server: &AssetServer,
+) -> Vec<Entity> {
     let mut bounds = Vec::new();
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[0],
     ));
-    setup_section_catenary(&mut commands, &node_mesh, &node_mat, &cable_mat);
+    setup_section_catenary(commands, node_mesh, node_mat, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[1],
     ));
-    setup_section_cap_styles(&mut commands, &mut materials, &cable_mat);
+    setup_section_cap_styles(commands, materials, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[2],
     ));
-    setup_section_solver_comparison(&mut commands, &node_mesh, &node_mat, &cable_mat);
+    setup_section_solver_comparison(commands, node_mesh, node_mat, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[3],
     ));
-    setup_section_entity_attachment(&mut commands, &mut meshes, &mut materials, &cable_mat);
+    setup_section_entity_attachment(commands, meshes, materials, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[4],
     ));
-    setup_section_shared_hub(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &node_mesh,
-        &node_mat,
-        &cable_mat,
-    );
+    setup_section_shared_hub(commands, meshes, materials, node_mesh, node_mat, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[5],
     ));
-    setup_section_astar(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &node_mesh,
-        &node_mat,
-        &cable_mat,
-    );
+    setup_section_astar(commands, meshes, materials, node_mesh, node_mat, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[6],
     ));
-    spawn_detach_demo(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &node_mesh,
-        &node_mat,
-        &cable_mat,
-    );
+    spawn_detach_demo(commands, meshes, materials, node_mesh, node_mat, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[7],
     ));
-    setup_section_inside_view(&mut commands, &cable_mat);
+    setup_section_inside_view(commands, cable_mat);
 
     bounds.push(spawn_section_bounds(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
+        commands,
+        meshes,
+        materials,
         SECTION_X[8],
     ));
-    setup_section_connector(&mut commands, &cable_mat, &asset_server);
+    setup_section_connector(commands, cable_mat, asset_server);
 
-    commands.insert_resource(SectionBounds(bounds));
+    bounds
 }
 
 /// Section 0: Simple catenary cable between two nodes.
@@ -525,7 +532,7 @@ fn setup_section_catenary(
         end,
         Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
         vec![],
-        &cable_mat,
+        cable_mat,
     );
 }
 
@@ -913,58 +920,59 @@ fn setup_section_connector(
     asset_server: &AssetServer,
 ) {
     let cx = SECTION_X[8];
-    let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
-    let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
-
-    // Load the power plug scene
     let plug_scene: Handle<Scene> = asset_server.load("models/power_plug.glb#Scene0");
 
-    // Cable with rounded cap at start, no cap at end (plug replaces it).
-    let cable = commands
-        .spawn((
-            Cable {
-                solver:     Solver::Linear,
-                obstacles:  vec![],
-                resolution: 0,
-            },
-            CableMeshConfig {
-                material: Some(cable_mat.clone()),
-                ..default()
-            },
-        ))
-        .id();
+    // Two cables side by side: left is Fixed (no roll), right is Rotating (follows twist).
+    let configs = [
+        (
+            Vec3::new(cx - SPAN_HALF_X, NODE_Y, 1.5),
+            Vec3::new(cx + SPAN_HALF_X, NODE_Y, 1.5),
+            ConnectorAlignment::Fixed,
+        ),
+        (
+            Vec3::new(cx - SPAN_HALF_X, NODE_Y, -1.5),
+            Vec3::new(cx + SPAN_HALF_X, NODE_Y, -1.5),
+            ConnectorAlignment::Rotating,
+        ),
+    ];
 
-    // Spawn the plug model — draggable, cable end attaches to it.
-    // The plug's local +Y is the cable-exit direction (strain relief).
-    // `ConnectorEnd` tells the alignment system which cable/end to read the tangent from.
-    let plug = commands
-        .spawn((
-            SceneRoot(plug_scene),
-            Transform::from_translation(end).with_scale(Vec3::splat(15.0)),
-            Draggable,
-            ConnectorEnd {
-                cable,
-                end: CableEnd::End,
-                // The plug model's cable-exit axis is +Y; we need to map that
-                // to the cable tangent. The base rotation flips the plug so the
-                // prongs face away from the cable direction.
-                rotation: Quat::IDENTITY,
-            },
-        ))
-        .observe(on_drag_start)
-        .id();
+    for (start, end, alignment) in configs {
+        let cable = commands
+            .spawn((
+                Cable {
+                    solver:     Solver::Linear,
+                    obstacles:  vec![],
+                    resolution: 0,
+                },
+                CableMeshConfig {
+                    material: Some(cable_mat.clone()),
+                    ..default()
+                },
+            ))
+            .id();
 
-    // Attach the cable endpoint at the plug's origin (Vec3::ZERO).
-    // Using a non-zero local offset would cause a feedback loop: plug rotation
-    // moves the offset → cable recomputes → new tangent → plug rotates again.
-    // The plug body hides the tube end, so ZERO offset looks fine.
-    commands.entity(cable).with_children(|parent| {
-        parent.spawn(CableEndpoint::new(CableEnd::Start, start));
-        parent.spawn((
-            CableEndpoint::new(CableEnd::End, Vec3::ZERO).with_cap(CapStyle::None),
-            AttachedTo(plug),
-        ));
-    });
+        let plug = commands
+            .spawn((
+                SceneRoot(plug_scene.clone()),
+                Transform::from_translation(end).with_scale(Vec3::splat(15.0)),
+                Draggable,
+                ConnectorEnd {
+                    cable,
+                    end: CableEnd::End,
+                    alignment,
+                },
+            ))
+            .observe(on_drag_start)
+            .id();
+
+        commands.entity(cable).with_children(|parent| {
+            parent.spawn(CableEndpoint::new(CableEnd::Start, start));
+            parent.spawn((
+                CableEndpoint::new(CableEnd::End, Vec3::ZERO).with_cap(CapStyle::None),
+                AttachedTo(plug),
+            ));
+        });
+    }
 }
 
 /// Aligns connector models to their cable's end tangent when the geometry changes.
@@ -1005,7 +1013,21 @@ fn align_connector_to_cable(
         // The plug model's cable-exit axis is +Y in Bevy (after GLTF import).
         // The tangent points along the cable's direction of travel, so negate it
         // so the cable exit faces back into the cable and the prongs face outward.
-        let new_rotation = Quat::from_rotation_arc(Vec3::Y, -tangent) * connector.rotation;
+        let direction = -tangent;
+        let new_rotation = match connector.alignment {
+            ConnectorAlignment::Fixed => {
+                // Constrain up to world Y — no roll as cable sweeps around.
+                // `looking_to` orients -Z toward `direction`, so we rotate the
+                // result to map our model's +Y to that direction instead.
+                let look = Transform::IDENTITY.looking_to(direction, Vec3::Y);
+                // Remap: model +Y → look -Z. That's a 90° rotation around X.
+                look.rotation * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+            },
+            ConnectorAlignment::Rotating => {
+                // Unconstrained rotation — follows the cable's natural twist.
+                Quat::from_rotation_arc(Vec3::Y, direction)
+            },
+        };
 
         // Only write if the rotation actually changed to avoid a feedback loop:
         // writing Transform → marks GlobalTransform changed → cable recomputes →
@@ -1164,7 +1186,7 @@ fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
 
 /// Spawn per-section info text (top-center, hidden by default).
 fn spawn_section_infos(commands: &mut Commands, camera: Entity) {
-    let section_texts: [(usize, &str); 6] = [
+    let section_texts: [(usize, &str); 7] = [
         (
             1,
             "Round (transparent) / Flat / None\nEnd caps are independent\nEsc - Pause lights",
@@ -1179,6 +1201,10 @@ fn spawn_section_infos(commands: &mut Commands, camera: Entity) {
              R - Reset",
         ),
         (7, "Look, it's a tube!"),
+        (
+            8,
+            "Front: Fixed (no roll)\nBack: Rotating (follows twist)\nDrag the plugs to compare",
+        ),
     ];
 
     for (section, text) in section_texts {
@@ -1660,8 +1686,7 @@ fn update_current_section_from_camera(
                 .partial_cmp(&(cam_x - *b).abs())
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
-        .map(|(i, _)| i)
-        .unwrap_or(0);
+        .map_or(0, |(i, _)| i);
 
     if nearest != current.0 {
         current.0 = nearest;
@@ -1760,10 +1785,8 @@ fn handle_keyboard(
     if slack_delta != 0.0 {
         for mut cable in &mut cables {
             match &mut cable.solver {
-                Solver::Catenary(catenary) => {
-                    catenary.slack = (catenary.slack + slack_delta).max(1.0);
-                },
-                Solver::Routed {
+                Solver::Catenary(catenary)
+                | Solver::Routed {
                     curve: Curve::Catenary(catenary),
                     ..
                 } => {

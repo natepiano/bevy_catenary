@@ -19,9 +19,9 @@ Inspired by Clay's layout library and `bevy_diegetic`, this crate splits into tw
 ┌──────────────────────────▼──────────────────────────────┐
 │  plugin/  — Bevy integration (thin layer)               │
 │                                                         │
-│  Components:  Cable, ComputedCableGeometry              │
-│  Systems:     compute_cable_routes                      │
-│  Rendering:   mesh generation, gizmos, materials        │
+│  Components:  Cable, CableEndpoint, AttachedTo          │
+│  Observer:    on_geometry_computed                       │
+│  Rendering:   tube mesh generation, debug gizmos        │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -30,7 +30,7 @@ The routing layer knows nothing about Bevy. The plugin layer knows nothing about
 ## Why This Matters
 
 - **Testability**: Route math is tested with plain `#[test]` — no `App`, no `World`, no systems.
-- **Multiple renderers**: Tube meshes, gizmo debug lines, billboard strips, LOD variants — all consume the same `CableGeometry`.
+- **Multiple renderers**: Tube meshes, gizmo debug lines — all consume the same `CableGeometry`.
 - **Multiple algorithms**: Catenary, A\*, orthogonal, composite — all produce the same `CableGeometry`.
 - **Reusability**: The routing layer could be used outside Bevy (tools, headless validation, etc.).
 
@@ -42,37 +42,37 @@ src/
 │
 ├── routing/                   # Pure math — no Bevy dependency
 │   ├── mod.rs                 # mod + pub use
-│   ├── types.rs               # Anchor, Obstacle, CableGeometry, CableSegment
+│   ├── types.rs               # Anchor, Obstacle, CableGeometry, CableSegment, RouteRequest
 │   ├── constants.rs           # Named constants (no magic values)
-│   ├── solver.rs              # RouteSolver trait, Router compositor
+│   ├── enums.rs               # Solver, Planner, Curve enum dispatch
+│   ├── solver.rs              # RouteSolver/CurveSolver/PathPlanner traits, Router compositor
 │   ├── catenary.rs            # Catenary math functions + CatenarySolver
 │   ├── pathfinding.rs         # 3D A* + AStarPlanner
 │   └── orthogonal.rs          # Orthogonal routing + OrthogonalPlanner
 │
 └── plugin/                    # Bevy integration
     ├── mod.rs                 # CatenaryPlugin
-    ├── components.rs          # Cable, ComputedCableGeometry
-    ├── systems.rs             # compute_cable_routes (with change detection)
-    └── mesh.rs                # CableGeometry → Mesh
+    ├── components.rs          # Cable, CableEndpoint, AttachedTo, ComputedCableGeometry
+    ├── systems.rs             # compute_cable_routes, on_geometry_computed, debug gizmos
+    └── mesh.rs                # CableGeometry → Mesh (tube generation, caps, elbows)
 ```
 
 ## Data Flow
 
 ```
-1. User creates Cable component with:
-   - start/end anchors
-   - solver choice
-   - obstacle list (optional)
+1. User spawns Cable entity with child CableEndpoint entities:
+   - Each endpoint has a CableEnd (Start/End) and optional AttachedTo(entity)
+   - Cable holds solver choice, obstacles, and resolution
 
 2. compute_cable_routes system:
-   - Queries Changed<Cable>
-   - Calls solver.solve(request)
+   - Resolves endpoint positions from AttachedTo GlobalTransforms
+   - Calls solver.solve(request) via Solver enum dispatch
    - Writes CableGeometry into ComputedCableGeometry
 
-3. Renderer reads ComputedCableGeometry:
-   - Generates tube mesh, or
-   - Draws debug gizmos, or
-   - Creates billboard strip, etc.
+3. on_geometry_computed observer:
+   - Triggers on Insert of ComputedCableGeometry
+   - Generates tube mesh from CableGeometry + CableMeshConfig
+   - Creates or updates mesh child entity
 ```
 
 ## Dependency Strategy

@@ -8,7 +8,6 @@
 //! [`Router`] composes a `PathPlanner` and `CurveSolver` into a `RouteSolver`.
 
 use bevy::math::Vec3;
-use bevy_kana::ToF32;
 use bevy_kana::ToUsize;
 
 use super::constants::DEFAULT_RESOLUTION;
