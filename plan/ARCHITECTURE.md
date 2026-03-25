@@ -42,7 +42,7 @@ src/
 │
 ├── routing/                   # Pure math — no Bevy dependency
 │   ├── mod.rs                 # mod + pub use
-│   ├── types.rs               # Anchor, Obstacle, CableGeometry, CableSegment, RouteRequest
+│   ├── types.rs               # Obstacle, CableGeometry, CableSegment, RouteRequest
 │   ├── constants.rs           # Named constants (no magic values)
 │   ├── enums.rs               # Solver, Planner, Curve enum dispatch
 │   ├── solver.rs              # RouteSolver/CurveSolver/PathPlanner traits, Router compositor
@@ -57,6 +57,22 @@ src/
     └── mesh.rs                # CableGeometry → Mesh (tube generation, caps, elbows)
 ```
 
+## Solver Dispatch
+
+Users choose a solver via the `Solver` enum on the `Cable` component:
+
+```
+Solver::Linear          → LinearSolver (straight line)
+Solver::Catenary(...)   → CatenarySolver (gravity sag)
+Solver::Routed { planner, curve }
+    planner: Planner::AStar       → AStarPlanner (obstacle avoidance)
+             Planner::Orthogonal  → OrthogonalPlanner (Manhattan paths)
+    curve:   Curve::Catenary(...) → CatenarySolver (sag between waypoints)
+             Curve::Linear        → LinearSolver (straight segments)
+```
+
+The enums implement `RouteSolver` / `CurveSolver` / `PathPlanner` by delegating to the inner concrete type. This avoids trait objects while keeping the API ergonomic.
+
 ## Data Flow
 
 ```
@@ -64,16 +80,68 @@ src/
    - Each endpoint has a CableEnd (Start/End) and optional AttachedTo(entity)
    - Cable holds solver choice, obstacles, and resolution
 
-2. compute_cable_routes system:
+2. compute_cable_routes system (runs in Update):
    - Resolves endpoint positions from AttachedTo GlobalTransforms
    - Calls solver.solve(request) via Solver enum dispatch
    - Writes CableGeometry into ComputedCableGeometry
 
-3. on_geometry_computed observer:
-   - Triggers on Insert of ComputedCableGeometry
-   - Generates tube mesh from CableGeometry + CableMeshConfig
-   - Creates or updates mesh child entity
+3. on_geometry_computed observer (fires on Insert<ComputedCableGeometry>):
+   - Reads CableMeshConfig and endpoint CapStyle overrides
+   - Calls generate_tube_mesh(geometry, config) → produces Mesh
+   - First time: spawns mesh child entity with Mesh3d + optional material
+   - Subsequent: mutates existing mesh asset in-place (no entity churn)
 ```
+
+## Mesh Generation Pipeline
+
+`generate_tube_mesh()` transforms `CableGeometry` + `CableMeshConfig` into a Bevy `Mesh`:
+
+```
+CableGeometry
+    │
+    ▼
+flatten_geometry()          Merge all segments into one polyline
+    │
+    ▼
+trim_path()                 Optional: remove start/end distance
+    │
+    ▼
+insert_knee_rings()         Detect sharp bends, insert cubic Bezier
+                            fillet points for smooth elbows
+    │
+    ▼
+compute_rmf()               Rotation-minimizing frames: (normal, binormal)
+                            pair at each path point — twist-free orientation
+    │
+    ▼
+generate_tube_rings()       Sweep circular cross-section along path using
+                            RMF frames. Produces positions, normals, UVs,
+                            and quad indices connecting adjacent rings
+    │
+    ▼
+apply_inside_normals()      For FaceSides::Both: duplicate vertices with
+                            negated normals so interior faces receive light.
+                            For FaceSides::Inside: negate all normals.
+    │
+    ▼
+add_end_caps()              Round (hemisphere), Flat (disc), or None per end.
+                            Inside caps get their own vertices with inward
+                            normals for correct interior lighting.
+    │
+    ▼
+Mesh                        TriangleList with positions, normals, UVs, indices
+```
+
+### CableMeshConfig
+
+Controls mesh generation independently from path computation:
+
+- `radius` / `sides` — cross-section circle dimensions
+- `cap_start` / `cap_end` — `CapStyle::Round`, `Flat`, or `None` (overridden per-endpoint via `CableEndpoint::cap_style`)
+- `face_sides` — `FaceSides::Outside`, `Inside`, or `Both`
+- `trim_start` / `trim_end` — hide tube near endpoints (useful for junction overlap)
+- `elbow_*` — bend radius, threshold angle, Bezier arm length for fillet smoothing
+- `material` — optional `Handle<StandardMaterial>` applied to mesh child
 
 ## Dependency Strategy
 
