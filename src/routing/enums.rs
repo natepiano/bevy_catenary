@@ -18,6 +18,7 @@ use super::solver::RouteSolver;
 use super::types::CableGeometry;
 use super::types::CableSegment;
 use super::types::RouteRequest;
+use super::types::Obstacle;
 
 /// Top-level solver selection for a cable.
 #[derive(Clone, Debug, Reflect)]
@@ -90,7 +91,7 @@ impl Solver {
 
 impl Planner {
     /// Find waypoints from `start` to `end`, routing around `obstacles`.
-    fn plan(&self, start: Vec3, end: Vec3, obstacles: &[super::types::Obstacle]) -> Vec<Vec3> {
+    fn plan(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> Vec<Vec3> {
         match self {
             Self::Direct => DirectPlanner.plan(start, end, obstacles),
             Self::Orthogonal => OrthogonalPlanner::new().plan(start, end, obstacles),

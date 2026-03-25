@@ -10,7 +10,7 @@ use super::components::CableEndpoint;
 use super::components::ComputedCableGeometry;
 use super::components::DetachPolicy;
 use super::mesh::CableMeshConfig;
-use super::mesh::generate_tube_mesh;
+use super::mesh;
 use crate::routing::MIN_SEGMENT_LENGTH;
 use crate::routing::RouteRequest;
 
@@ -228,7 +228,7 @@ pub fn on_geometry_computed(
     mesh_config.cap_start = cap_start;
     mesh_config.cap_end = cap_end;
 
-    let new_mesh = generate_tube_mesh(geometry, &mesh_config);
+    let new_mesh = mesh::generate_tube_mesh(geometry, &mesh_config);
 
     if let Some(handle) = mesh_handle {
         // Update existing mesh asset in place
