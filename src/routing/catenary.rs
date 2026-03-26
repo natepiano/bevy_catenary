@@ -13,6 +13,7 @@
 
 use bevy::math::Vec3;
 use bevy::reflect::Reflect;
+use bevy_kana::Position;
 use bevy_kana::ToF32;
 use bevy_kana::ToUsize;
 
@@ -109,13 +110,15 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
 /// `resolution` is the number of sample points (minimum 2).
 #[must_use]
 pub fn sample_3d(
-    start: Vec3,
-    end: Vec3,
+    start: Position,
+    end: Position,
     slack: f32,
     gravity_dir: Vec3,
     resolution: u32,
 ) -> CableSegment {
     let n = resolution.max(2).to_usize();
+    let start = *start;
+    let end = *end;
     let chord = end - start;
     let chord_length = chord.length();
 
@@ -207,7 +210,7 @@ pub fn sample_3d(
 
 /// Fallback for degenerate cases: straight line between two points.
 fn sample_straight_line(start: Vec3, end: Vec3, n: usize) -> CableSegment {
-    CableSegment::straight_line(start, end, n)
+    CableSegment::straight_line(Position(start), Position(end), n)
 }
 
 /// Handle purely vertical cables (start and end aligned with gravity).
@@ -319,7 +322,7 @@ impl CatenarySolver {
 }
 
 impl CurveSolver for CatenarySolver {
-    fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment {
+    fn solve_segment(&self, start: Position, end: Position, resolution: u32) -> CableSegment {
         let gravity_dir = self.gravity.normalize_or_zero();
         sample_3d(start, end, self.slack, gravity_dir, resolution)
     }
@@ -329,7 +332,7 @@ impl RouteSolver for CatenarySolver {
     fn solve(&self, request: &RouteRequest) -> CableGeometry {
         let resolution = request.effective_resolution(self.resolution);
         let segment = self.solve_segment(request.start, request.end, resolution);
-        let waypoints = vec![request.start, request.end];
+        let waypoints = vec![*request.start, *request.end];
         CableGeometry::from_segments(vec![segment], waypoints)
     }
 }

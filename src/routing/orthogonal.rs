@@ -1,11 +1,12 @@
 //! Orthogonal routing — axis-aligned cable paths with 90-degree bends.
 
 use bevy::math::Vec3;
+use bevy_kana::Position;
 
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
 use super::solver::PathPlanner;
-use super::types::Obstacle;
 use super::types;
+use super::types::Obstacle;
 
 /// Plans axis-aligned cable paths with 90-degree bends.
 ///
@@ -50,7 +51,7 @@ impl OrthogonalPlanner {
 
     /// Check if an axis-aligned segment between two points is blocked.
     fn is_segment_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_segment_blocked(start, end, obstacles, self.margin, 10)
+        types::is_segment_blocked(Position(start), Position(end), obstacles, self.margin, 10)
     }
 
     /// Build an axis-aligned path moving one axis at a time in the given order.
@@ -106,7 +107,9 @@ impl OrthogonalPlanner {
 }
 
 impl PathPlanner for OrthogonalPlanner {
-    fn plan(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> Vec<Vec3> {
+    fn plan(&self, start: Position, end: Position, obstacles: &[Obstacle]) -> Vec<Vec3> {
+        let start = *start;
+        let end = *end;
         // Axis orders to try: preferred first, then alternatives
         let orders: &[&[usize]] = if self.vertical_first {
             &[

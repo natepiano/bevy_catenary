@@ -46,6 +46,7 @@ use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
+use bevy_kana::Position;
 use bevy_panorbit_camera::PanOrbitCamera;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use bevy_panorbit_camera::TrackpadBehavior;
@@ -827,7 +828,7 @@ fn setup_section_astar(
     let cx = SECTION_X[5];
     let start = Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0);
     let end = Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0);
-    let obstacle_pos = Vec3::new(cx, NODE_Y, 0.0);
+    let obstacle_pos = Position::new(cx, NODE_Y, 0.0);
     let obstacle = Obstacle::new(OBSTACLE_HALF_EXTENTS, obstacle_pos);
 
     spawn_node_pair(commands, node_mesh, node_mat, start, end);
@@ -857,7 +858,7 @@ fn setup_section_astar(
                 alpha_mode: AlphaMode::Blend,
                 ..default()
             })),
-            Transform::from_translation(obstacle_pos),
+            Transform::from_translation(*obstacle_pos),
             NotShadowCaster,
         ))
         .observe(on_mesh_clicked);
@@ -1736,7 +1737,6 @@ fn sync_cable_settings(
     }
 }
 
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn handle_keyboard(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,

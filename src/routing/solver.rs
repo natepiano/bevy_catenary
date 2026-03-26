@@ -8,6 +8,7 @@
 //! [`Router`] composes a `PathPlanner` and `CurveSolver` into a `RouteSolver`.
 
 use bevy::math::Vec3;
+use bevy_kana::Position;
 use bevy_kana::ToUsize;
 
 use super::constants::DEFAULT_RESOLUTION;
@@ -29,14 +30,14 @@ pub trait RouteSolver: Send + Sync {
 /// that the cable should pass through (always includes start and end).
 pub trait PathPlanner: Send + Sync {
     /// Plan a path from `start` to `end`, routing around `obstacles`.
-    fn plan(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> Vec<Vec3>;
+    fn plan(&self, start: Position, end: Position, obstacles: &[Obstacle]) -> Vec<Vec3>;
 }
 
 /// Generates smooth curve geometry between two points.
 /// No obstacle awareness — that's the planner's job.
 pub trait CurveSolver: Send + Sync {
     /// Produce a `CableSegment` of smooth geometry between `start` and `end`.
-    fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment;
+    fn solve_segment(&self, start: Position, end: Position, resolution: u32) -> CableSegment;
 }
 
 /// Trivial planner that returns a direct path with no obstacle avoidance.
@@ -44,8 +45,8 @@ pub trait CurveSolver: Send + Sync {
 pub struct DirectPlanner;
 
 impl PathPlanner for DirectPlanner {
-    fn plan(&self, start: Vec3, end: Vec3, _obstacles: &[Obstacle]) -> Vec<Vec3> {
-        vec![start, end]
+    fn plan(&self, start: Position, end: Position, _obstacles: &[Obstacle]) -> Vec<Vec3> {
+        vec![*start, *end]
     }
 }
 
@@ -54,7 +55,7 @@ impl PathPlanner for DirectPlanner {
 pub struct LinearSolver;
 
 impl CurveSolver for LinearSolver {
-    fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment {
+    fn solve_segment(&self, start: Position, end: Position, resolution: u32) -> CableSegment {
         CableSegment::straight_line(start, end, resolution.max(2).to_usize())
     }
 }
@@ -62,7 +63,7 @@ impl CurveSolver for LinearSolver {
 impl RouteSolver for LinearSolver {
     fn solve(&self, request: &RouteRequest) -> CableGeometry {
         let segment = self.solve_segment(request.start, request.end, request.resolution);
-        let waypoints = vec![request.start, request.end];
+        let waypoints = vec![*request.start, *request.end];
         CableGeometry::from_segments(vec![segment], waypoints)
     }
 }
@@ -103,7 +104,10 @@ impl RouteSolver for Router {
         let resolution = request.effective_resolution(self.resolution);
         let segments: Vec<CableSegment> = waypoints
             .windows(2)
-            .map(|pair| self.curve.solve_segment(pair[0], pair[1], resolution))
+            .map(|pair| {
+                self.curve
+                    .solve_segment(Position(pair[0]), Position(pair[1]), resolution)
+            })
             .collect();
 
         CableGeometry::from_segments(segments, waypoints)

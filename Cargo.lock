@@ -1117,7 +1117,9 @@ dependencies = [
 
 [[package]]
 name = "bevy_kana"
-version = "0.0.1"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "883d381be67b1cdb1cb8378e3d34783fee92433a956b9befd134599293138aa9"
 dependencies = [
  "bevy",
 ]

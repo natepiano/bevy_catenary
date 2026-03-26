@@ -1,6 +1,7 @@
 //! Bevy systems for cable route computation and debug rendering.
 
 use bevy::prelude::*;
+use bevy_kana::Position;
 
 use super::CableGizmoGroup;
 use super::components::AttachedTo;
@@ -9,8 +10,8 @@ use super::components::CableEnd;
 use super::components::CableEndpoint;
 use super::components::ComputedCableGeometry;
 use super::components::DetachPolicy;
-use super::mesh::CableMeshConfig;
 use super::mesh;
+use super::mesh::CableMeshConfig;
 use crate::routing::MIN_SEGMENT_LENGTH;
 use crate::routing::RouteRequest;
 
@@ -94,9 +95,9 @@ pub fn compute_cable_routes(
         }
 
         let request = RouteRequest {
-            start,
-            end,
-            obstacles: &cable.obstacles,
+            start:      Position(start),
+            end:        Position(end),
+            obstacles:  &cable.obstacles,
             resolution: cable.resolution,
         };
 

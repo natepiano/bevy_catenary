@@ -22,10 +22,13 @@ cargo    = { level = "deny", priority = -1 }
 nursery  = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 
-# Allow specific lints that conflict with common patterns
-multiple_crate_versions    = "allow"
-needless_pass_by_value     = "allow"
-used_underscore_binding    = "allow"
+# Allow specific lints that conflict with Bevy patterns
+multiple_crate_versions = "allow"
+needless_pass_by_value  = "allow"
+option_if_let_else      = "allow"
+too_many_arguments      = "allow"
+type_complexity         = "allow"
+wildcard_imports        = "allow"
 
 [lints.rust]
 missing_docs = "deny"
@@ -38,9 +41,7 @@ bevy = { version = "0.18.1", default-features = false, features = [
   "bevy_pbr",
   "bevy_render",
 ] }
-bevy_kana = { path = "../bevy_kana", default-features = false, features = [
-  "math",
-] }
+bevy_kana = "0.0.2"
 
 [[example]]
 name = "playground"
