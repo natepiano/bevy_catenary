@@ -5,6 +5,7 @@
 
 mod catenary;
 mod constants;
+#[allow(clippy::used_underscore_binding)] // false positive on enum variant fields
 mod enums;
 mod orthogonal;
 mod pathfinding;

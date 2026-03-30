@@ -278,7 +278,6 @@ fn add_end_caps(
 }
 
 /// Dispatch a single cap (start or end) based on style, generating outside and/or inside faces.
-#[allow(clippy::too_many_arguments)]
 fn add_single_cap(
     style: &CapStyle,
     point: &Vec3,
@@ -346,7 +345,6 @@ fn add_single_cap(
 /// Generate a tube `Mesh` from cable geometry.
 ///
 /// Generate cross-section rings along the tube path and connect them with triangle quads.
-#[allow(clippy::too_many_arguments)]
 fn generate_tube_rings(
     all_points: &[Vec3],
     all_tangents: &[Vec3],
@@ -918,7 +916,6 @@ pub fn compute_elbow_metadata(
 ///
 /// `CapSide::Inside` duplicates the equator ring with negated normals, negates all
 /// generated normals, and flips winding order for correct interior lighting.
-#[allow(clippy::too_many_arguments)]
 fn add_hemisphere_cap(
     center: &Vec3,
     cap_direction: &Vec3,
