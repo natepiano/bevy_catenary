@@ -47,11 +47,10 @@ use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 use bevy_kana::Position;
-use bevy_panorbit_camera::PanOrbitCamera;
-use bevy_panorbit_camera::PanOrbitCameraPlugin;
-use bevy_panorbit_camera::TrackpadBehavior;
-use bevy_panorbit_camera_ext::PanOrbitCameraExtPlugin;
-use bevy_panorbit_camera_ext::ZoomToFit;
+use bevy_lagrange::LagrangePlugin;
+use bevy_lagrange::OrbitCam;
+use bevy_lagrange::TrackpadBehavior;
+use bevy_lagrange::ZoomToFit;
 
 // ============================================================================
 // Layout -7 sections spread along X
@@ -279,8 +278,7 @@ fn main() {
                 ..default()
             }),
             EguiPlugin::default(),
-            PanOrbitCameraPlugin,
-            PanOrbitCameraExtPlugin,
+            LagrangePlugin,
             MeshPickingPlugin,
             BrpExtrasPlugin::default(),
             CatenaryPlugin,
@@ -321,7 +319,7 @@ fn setup_camera(mut commands: Commands) {
     // Camera starts offset in front of section 0 so ZoomToFit gets a good angle
     let focus = Vec3::new(SECTION_X[0], NODE_Y * 0.5, 0.0);
     let camera = commands
-        .spawn(PanOrbitCamera {
+        .spawn(OrbitCam {
             button_orbit: MouseButton::Middle,
             button_pan: MouseButton::Middle,
             modifier_pan: Some(KeyCode::ShiftLeft),
@@ -1670,7 +1668,7 @@ fn update_section_info_visibility(
 
 /// Track which section the camera is nearest to and update the nav label.
 fn update_current_section_from_camera(
-    cameras: Query<&PanOrbitCamera>,
+    cameras: Query<&OrbitCam>,
     mut current: ResMut<CurrentSection>,
     mut label_query: Query<&mut Text, With<NavLabel>>,
 ) {
