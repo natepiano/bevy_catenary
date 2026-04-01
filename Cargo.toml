@@ -12,7 +12,8 @@ version     = "0.1.0"
 
 [lints.clippy]
 # Our strict lints
-expect_used = "deny"
+allow_attributes_without_reason = "deny"
+expect_used                     = "deny"
 panic       = "deny"
 unwrap_used = "deny"
 
