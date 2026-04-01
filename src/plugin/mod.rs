@@ -4,7 +4,7 @@
 //! debug gizmo rendering, and tube mesh generation for [`Cable`] entities.
 
 mod components;
-#[allow(clippy::used_underscore_binding)] // false positive on enum variant fields
+#[allow(clippy::used_underscore_binding, reason = "false positive on enum variant fields")]
 mod mesh;
 mod systems;
 

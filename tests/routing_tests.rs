@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "tests should panic on unexpected values"
+)]
 //! Comprehensive tests for the `bevy_catenary` routing module.
 
 use bevy::math::Vec3;
