@@ -22,13 +22,12 @@ use std::time::Duration;
 
 use bevy::light::NotShadowCaster;
 use bevy::math::curve::easing::EaseFunction;
-use bevy::picking::Pickable;
 use bevy::picking::mesh_picking::MeshPickingPlugin;
+use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy_brp_extras::BrpExtrasPlugin;
 use bevy_catenary::AttachedTo;
 use bevy_catenary::Cable;
-use bevy_catenary::CableDebugEnabled;
 use bevy_catenary::CableEnd;
 use bevy_catenary::CableEndpoint;
 use bevy_catenary::CableMeshChild;
@@ -38,6 +37,7 @@ use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::ComputedCableGeometry;
 use bevy_catenary::Curve;
+use bevy_catenary::DebugGizmos;
 use bevy_catenary::DetachPolicy;
 use bevy_catenary::Obstacle;
 use bevy_catenary::Planner;
@@ -1738,7 +1738,7 @@ fn sync_cable_settings(
 fn handle_keyboard(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
-    mut debug_enabled: ResMut<CableDebugEnabled>,
+    mut debug_enabled: ResMut<DebugGizmos>,
     mut inspector_visible: ResMut<InspectorVisible>,
     scene: Res<SceneEntities>,
     // Slack adjustment (exclude `SlackLocked` cables)
@@ -1755,7 +1755,10 @@ fn handle_keyboard(
     >,
 ) {
     if keyboard.just_pressed(KeyCode::KeyD) {
-        debug_enabled.0 = !debug_enabled.0;
+        *debug_enabled = match *debug_enabled {
+            DebugGizmos::Enabled => DebugGizmos::Disabled,
+            DebugGizmos::Disabled => DebugGizmos::Enabled,
+        };
     }
 
     if keyboard.just_pressed(KeyCode::KeyI) {

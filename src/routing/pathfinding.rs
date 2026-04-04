@@ -9,6 +9,7 @@ use bevy_kana::Position;
 use bevy_kana::ToF32;
 use bevy_kana::ToI32;
 
+use super::constants::COLLINEARITY_THRESHOLD;
 use super::constants::DEFAULT_GRID_SIZE;
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
 use super::solver::PathPlanner;
@@ -282,7 +283,7 @@ fn simplify_path(waypoints: &mut Vec<Vec3>) {
         let dir2 = (next - current).normalize_or_zero();
 
         // Keep the waypoint if direction changes significantly
-        if dir1.dot(dir2) < 0.999 {
+        if dir1.dot(dir2) < COLLINEARITY_THRESHOLD {
             simplified.push(current);
         }
     }

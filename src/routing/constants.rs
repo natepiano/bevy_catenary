@@ -32,3 +32,7 @@ pub const MIN_CATENARY_PARAM: f32 = 1e-4;
 
 /// Slack values below this degrade to a straight line instead of attempting a catenary solve.
 pub const STRAIGHT_LINE_THRESHOLD: f32 = 1.005;
+
+/// Dot-product threshold for detecting collinear waypoints during path simplification.
+/// Values closer to 1.0 remove fewer points (less aggressive simplification).
+pub const COLLINEARITY_THRESHOLD: f32 = 0.999;

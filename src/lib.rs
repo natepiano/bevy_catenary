@@ -40,10 +40,11 @@ mod plugin;
 mod routing;
 
 // Bevy plugin
+pub use plugin::compute_elbow_metadata;
+pub use plugin::generate_tube_mesh;
 pub use plugin::AttachedEndpoints;
 pub use plugin::AttachedTo;
 pub use plugin::Cable;
-pub use plugin::CableDebugEnabled;
 pub use plugin::CableEnd;
 pub use plugin::CableEndpoint;
 pub use plugin::CableGizmoGroup;
@@ -53,11 +54,14 @@ pub use plugin::CableMeshHandle;
 pub use plugin::CapStyle;
 pub use plugin::CatenaryPlugin;
 pub use plugin::ComputedCableGeometry;
+pub use plugin::DebugGizmos;
 pub use plugin::DetachPolicy;
 pub use plugin::ElbowMetadata;
 pub use plugin::FaceSides;
-pub use plugin::compute_elbow_metadata;
-pub use plugin::generate_tube_mesh;
+// Standalone catenary math
+pub use routing::evaluate;
+pub use routing::sample_3d;
+pub use routing::solve_parameter;
 // Solvers
 pub use routing::AStarPlanner;
 pub use routing::Anchor;
@@ -68,10 +72,6 @@ pub use routing::CatenarySolver;
 pub use routing::Curve;
 // Routing traits
 pub use routing::CurveSolver;
-// Constants
-pub use routing::DEFAULT_GRAVITY;
-pub use routing::DEFAULT_RESOLUTION;
-pub use routing::DEFAULT_SLACK;
 pub use routing::DirectPlanner;
 pub use routing::LinearSolver;
 pub use routing::Obstacle;
@@ -81,8 +81,9 @@ pub use routing::Planner;
 pub use routing::RouteRequest;
 pub use routing::RouteSolver;
 pub use routing::Router;
+pub use routing::RoutingPriority;
 pub use routing::Solver;
-// Standalone catenary math
-pub use routing::evaluate;
-pub use routing::sample_3d;
-pub use routing::solve_parameter;
+// Constants
+pub use routing::DEFAULT_GRAVITY;
+pub use routing::DEFAULT_RESOLUTION;
+pub use routing::DEFAULT_SLACK;

@@ -32,6 +32,7 @@ pub use enums::Curve;
 pub use enums::Planner;
 pub use enums::Solver;
 pub use orthogonal::OrthogonalPlanner;
+pub use orthogonal::RoutingPriority;
 pub use pathfinding::AStarPlanner;
 // Traits
 pub use solver::CurveSolver;

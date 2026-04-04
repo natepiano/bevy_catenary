@@ -8,6 +8,16 @@ use super::solver::PathPlanner;
 use super::types;
 use super::types::Obstacle;
 
+/// Whether to route vertically or horizontally first.
+#[derive(Clone, Debug, Default)]
+pub enum RoutingPriority {
+    /// Route horizontally (X/Z) before vertically (Y).
+    #[default]
+    HorizontalFirst,
+    /// Route vertically (Y) before horizontally (X/Z).
+    VerticalFirst,
+}
+
 /// Plans axis-aligned cable paths with 90-degree bends.
 ///
 /// Routes cables along the primary axes (X, Y, Z), choosing the most
@@ -15,17 +25,16 @@ use super::types::Obstacle;
 #[derive(Clone, Debug)]
 pub struct OrthogonalPlanner {
     /// Clearance around obstacles.
-    pub margin:         f32,
-    /// When true, prefer routing vertically first then horizontally.
-    /// When false, prefer horizontal first.
-    pub vertical_first: bool,
+    pub margin:   f32,
+    /// Axis routing priority.
+    pub priority: RoutingPriority,
 }
 
 impl Default for OrthogonalPlanner {
     fn default() -> Self {
         Self {
-            margin:         DEFAULT_OBSTACLE_MARGIN,
-            vertical_first: false,
+            margin:   DEFAULT_OBSTACLE_MARGIN,
+            priority: RoutingPriority::default(),
         }
     }
 }
@@ -45,7 +54,7 @@ impl OrthogonalPlanner {
     /// Prefer vertical-first routing.
     #[must_use]
     pub const fn vertical_first(mut self) -> Self {
-        self.vertical_first = true;
+        self.priority = RoutingPriority::VerticalFirst;
         self
     }
 
@@ -111,7 +120,7 @@ impl PathPlanner for OrthogonalPlanner {
         let start = *start;
         let end = *end;
         // Axis orders to try: preferred first, then alternatives
-        let orders: &[&[usize]] = if self.vertical_first {
+        let orders: &[&[usize]] = if matches!(self.priority, RoutingPriority::VerticalFirst) {
             &[
                 &[1, 0, 2], // Y, X, Z
                 &[0, 1, 2], // X, Y, Z

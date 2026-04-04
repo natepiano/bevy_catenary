@@ -44,15 +44,29 @@ fn push_quad(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, d: u32, flip: bool)
     push_tri(indices, b, d, c, flip);
 }
 
+/// Immutable path data for tube mesh generation: points, tangents, arc lengths, and RMF frames.
+struct TubePathData<'a> {
+    points:      &'a [Vec3],
+    tangents:    &'a [Vec3],
+    arc_lengths: &'a [f32],
+    frames:      &'a [(Vec3, Vec3)],
+}
+
 /// Mutable references to the mesh attribute buffers being built.
 ///
-/// Bundles the four output vectors that every mesh-building helper needs,
+/// Bundles the output vectors that every mesh-building helper needs,
 /// reducing argument counts on internal functions.
 struct MeshBuffers<'a> {
     positions: &'a mut Vec<[f32; 3]>,
     normals:   &'a mut Vec<[f32; 3]>,
     uvs:       &'a mut Vec<[f32; 2]>,
     indices:   &'a mut Vec<u32>,
+}
+
+/// Extended mesh buffers that also track inside-face indices for double-sided rendering.
+struct TubeMeshBuffers<'a> {
+    buffers:        MeshBuffers<'a>,
+    inside_indices: &'a mut Vec<u32>,
 }
 
 /// Resolve elbow arm lengths from per-elbow overrides or the global multiplier.
@@ -240,8 +254,6 @@ fn add_end_caps(
         return;
     }
 
-    let needs_inside = matches!(config.face_sides, FaceSides::Inside | FaceSides::Both);
-    let needs_outside = matches!(config.face_sides, FaceSides::Outside | FaceSides::Both);
     let negate_outside = matches!(config.face_sides, FaceSides::Inside);
 
     // Start cap
@@ -253,9 +265,8 @@ fn add_end_caps(
         config.radius,
         sides,
         0,
+        &config.face_sides,
         !negate_outside,
-        needs_outside,
-        needs_inside,
         buffers,
     );
 
@@ -270,9 +281,8 @@ fn add_end_caps(
         config.radius,
         sides,
         last_ring_base,
+        &config.face_sides,
         negate_outside,
-        needs_outside,
-        needs_inside,
         buffers,
     );
 }
@@ -286,11 +296,13 @@ fn add_single_cap(
     radius: f32,
     sides: u32,
     ring_base: u32,
+    face_sides: &FaceSides,
     flip_winding: bool,
-    needs_outside: bool,
-    needs_inside: bool,
     buffers: &mut MeshBuffers,
 ) {
+    let needs_outside = matches!(face_sides, FaceSides::Outside | FaceSides::Both);
+    let needs_inside = matches!(face_sides, FaceSides::Inside | FaceSides::Both);
+
     let cap_rings = sides.max(8);
 
     match style {
@@ -346,23 +358,20 @@ fn add_single_cap(
 ///
 /// Generate cross-section rings along the tube path and connect them with triangle quads.
 fn generate_tube_rings(
-    all_points: &[Vec3],
-    all_tangents: &[Vec3],
-    all_arc_lengths: &[f32],
-    frames: &[(Vec3, Vec3)],
+    path: &TubePathData,
     config: &CableMeshConfig,
     sides: u32,
     total_length: f32,
-    positions: &mut Vec<[f32; 3]>,
-    normals: &mut Vec<[f32; 3]>,
-    uvs: &mut Vec<[f32; 2]>,
-    indices: &mut Vec<u32>,
-    inside_indices: &mut Vec<u32>,
+    out: &mut TubeMeshBuffers,
 ) {
-    for (i, ((point, ..), (frame_normal, binormal))) in
-        all_points.iter().zip(all_tangents).zip(frames).enumerate()
+    for (i, ((point, ..), (frame_normal, binormal))) in path
+        .points
+        .iter()
+        .zip(path.tangents)
+        .zip(path.frames)
+        .enumerate()
     {
-        let arc_u = all_arc_lengths[i] / total_length;
+        let arc_u = path.arc_lengths[i] / total_length;
 
         // Generate cross-section ring
         for j in 0..sides {
@@ -373,9 +382,9 @@ fn generate_tube_rings(
             let vertex_pos = *point + offset;
             let vertex_normal = offset.normalize_or_zero();
 
-            positions.push(vertex_pos.to_array());
-            normals.push(vertex_normal.to_array());
-            uvs.push([arc_u, j.to_f32() / sides.to_f32()]);
+            out.buffers.positions.push(vertex_pos.to_array());
+            out.buffers.normals.push(vertex_normal.to_array());
+            out.buffers.uvs.push([arc_u, j.to_f32() / sides.to_f32()]);
         }
 
         // Connect to previous ring with triangles
@@ -393,15 +402,36 @@ fn generate_tube_rings(
 
                 match config.face_sides {
                     FaceSides::Outside => {
-                        push_quad(indices, curr_j, curr_j_next, next_j, next_j_next, false);
+                        push_quad(
+                            out.buffers.indices,
+                            curr_j,
+                            curr_j_next,
+                            next_j,
+                            next_j_next,
+                            false,
+                        );
                     },
                     FaceSides::Inside => {
-                        push_quad(indices, curr_j, curr_j_next, next_j, next_j_next, true);
+                        push_quad(
+                            out.buffers.indices,
+                            curr_j,
+                            curr_j_next,
+                            next_j,
+                            next_j_next,
+                            true,
+                        );
                     },
                     FaceSides::Both => {
-                        push_quad(indices, curr_j, curr_j_next, next_j, next_j_next, false);
                         push_quad(
-                            inside_indices,
+                            out.buffers.indices,
+                            curr_j,
+                            curr_j_next,
+                            next_j,
+                            next_j_next,
+                            false,
+                        );
+                        push_quad(
+                            out.inside_indices,
                             curr_j,
                             curr_j_next,
                             next_j,
@@ -499,19 +529,26 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
     let mut indices: Vec<u32> = Vec::new();
     let mut inside_indices: Vec<u32> = Vec::new();
 
+    let path = TubePathData {
+        points:      &all_points,
+        tangents:    &all_tangents,
+        arc_lengths: &all_arc_lengths,
+        frames:      &frames,
+    };
     generate_tube_rings(
-        &all_points,
-        &all_tangents,
-        &all_arc_lengths,
-        &frames,
+        &path,
         config,
         sides,
         total_length,
-        &mut positions,
-        &mut normals,
-        &mut uvs,
-        &mut indices,
-        &mut inside_indices,
+        &mut TubeMeshBuffers {
+            buffers:        MeshBuffers {
+                positions: &mut positions,
+                normals:   &mut normals,
+                uvs:       &mut uvs,
+                indices:   &mut indices,
+            },
+            inside_indices: &mut inside_indices,
+        },
     );
 
     apply_inside_normals(

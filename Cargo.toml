@@ -15,6 +15,7 @@ version     = "0.1.0"
 allow_attributes_without_reason = "deny"
 expect_used                     = "deny"
 panic                           = "deny"
+unreachable                     = "deny"
 unwrap_used                     = "deny"
 
 # Enable lint groups as errors (with lower priority so allows can override)
@@ -25,6 +26,7 @@ pedantic = { level = "deny", priority = -1 }
 
 # Allow specific lints that conflict with Bevy patterns
 multiple_crate_versions = "allow"
+redundant_pub_crate     = "allow"
 needless_pass_by_value  = "allow"
 option_if_let_else      = "allow"
 too_many_arguments      = "allow"

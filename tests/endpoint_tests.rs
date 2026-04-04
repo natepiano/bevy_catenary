@@ -10,6 +10,7 @@
 use bevy::app::App;
 use bevy::math::Vec3;
 use bevy::prelude::*;
+use bevy_catenary::AttachedTo;
 use bevy_catenary::Cable;
 use bevy_catenary::CableEnd;
 use bevy_catenary::CableEndpoint;
@@ -84,8 +85,6 @@ fn world_attached_cable_computes_geometry() {
 
 #[test]
 fn entity_attached_cable_follows_target() {
-    use bevy_catenary::AttachedTo;
-
     let mut app = build_test_app();
 
     // Spawn a target entity with a transform
@@ -181,8 +180,6 @@ fn zero_length_cable_does_not_panic() {
 
 #[test]
 fn missing_target_does_not_panic() {
-    use bevy_catenary::AttachedTo;
-
     let mut app = build_test_app();
 
     // Spawn a real target, then despawn it before the cable computes
@@ -225,8 +222,6 @@ fn missing_target_does_not_panic() {
 
 #[test]
 fn detach_policy_despawn_removes_cable() {
-    use bevy_catenary::AttachedTo;
-
     let mut app = build_test_app();
 
     let target = app
@@ -275,8 +270,6 @@ fn detach_policy_despawn_removes_cable() {
 
 #[test]
 fn detach_policy_hang_in_place_keeps_cable() {
-    use bevy_catenary::AttachedTo;
-
     let mut app = build_test_app();
 
     let target = app

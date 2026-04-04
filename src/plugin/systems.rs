@@ -3,17 +3,25 @@
 use bevy::prelude::*;
 use bevy_kana::Position;
 
-use super::CableGizmoGroup;
 use super::components::AttachedTo;
 use super::components::Cable;
 use super::components::CableEnd;
 use super::components::CableEndpoint;
 use super::components::ComputedCableGeometry;
 use super::components::DetachPolicy;
+use super::constants::CABLE_GIZMO_COLOR;
+use super::constants::SEGMENT_BOUNDARY_COLOR;
+use super::constants::SEGMENT_BOUNDARY_DOT_SIZE;
+use super::constants::TANGENT_GIZMO_COLOR;
+use super::constants::TANGENT_SAMPLING_INTERVAL;
+use super::constants::TANGENT_VECTOR_SCALE;
+use super::constants::WAYPOINT_DOT_COLOR;
+use super::constants::WAYPOINT_DOT_SIZE;
 use super::mesh;
 use super::mesh::CableMeshConfig;
-use crate::routing::MIN_SEGMENT_LENGTH;
+use super::CableGizmoGroup;
 use crate::routing::RouteRequest;
+use crate::routing::MIN_SEGMENT_LENGTH;
 
 /// Stores the mesh asset handle for a cable's generated tube mesh.
 /// The library manages this — users don't need to interact with it directly.
@@ -113,9 +121,9 @@ pub fn compute_cable_routes(
 pub fn render_cable_gizmos(
     cables: Query<(&ComputedCableGeometry, &GlobalTransform)>,
     mut gizmos: Gizmos<CableGizmoGroup>,
-    debug_enabled: Res<CableDebugEnabled>,
+    debug_enabled: Res<DebugGizmos>,
 ) {
-    if !debug_enabled.0 {
+    if *debug_enabled == DebugGizmos::Disabled {
         return;
     }
     for (computed, _global_transform) in &cables {
@@ -130,13 +138,13 @@ pub fn render_cable_gizmos(
             }
 
             for pair in segment.points.windows(2) {
-                gizmos.line(pair[0], pair[1], Color::srgb(1.0, 0.6, 0.0));
+                gizmos.line(pair[0], pair[1], CABLE_GIZMO_COLOR);
             }
         }
 
         // Draw waypoints as small crosses
         for &wp in &geometry.waypoints {
-            draw_dot(&mut gizmos, wp, 0.05, Color::srgb(0.0, 1.0, 0.0));
+            draw_dot(&mut gizmos, wp, WAYPOINT_DOT_SIZE, WAYPOINT_DOT_COLOR);
         }
     }
 }
@@ -145,9 +153,9 @@ pub fn render_cable_gizmos(
 pub fn render_debug_gizmos(
     cables: Query<&ComputedCableGeometry>,
     mut gizmos: Gizmos<CableGizmoGroup>,
-    debug_enabled: Res<CableDebugEnabled>,
+    debug_enabled: Res<DebugGizmos>,
 ) {
-    if !debug_enabled.0 {
+    if *debug_enabled == DebugGizmos::Disabled {
         return;
     }
 
@@ -157,19 +165,33 @@ pub fn render_debug_gizmos(
         };
 
         for segment in &geometry.segments {
-            // Draw tangent vectors at every 4th point
+            // Draw tangent vectors at sampled points
             for (i, (point, tangent)) in segment.points.iter().zip(&segment.tangents).enumerate() {
-                if i % 4 == 0 {
-                    gizmos.line(*point, *point + *tangent * 0.1, Color::srgb(1.0, 1.0, 0.0));
+                if i % TANGENT_SAMPLING_INTERVAL == 0 {
+                    gizmos.line(
+                        *point,
+                        *point + *tangent * TANGENT_VECTOR_SCALE,
+                        TANGENT_GIZMO_COLOR,
+                    );
                 }
             }
 
             // Draw segment start/end as red dots
             if let Some(first) = segment.points.first() {
-                draw_dot(&mut gizmos, *first, 0.03, Color::srgb(1.0, 0.0, 0.0));
+                draw_dot(
+                    &mut gizmos,
+                    *first,
+                    SEGMENT_BOUNDARY_DOT_SIZE,
+                    SEGMENT_BOUNDARY_COLOR,
+                );
             }
             if let Some(last) = segment.points.last() {
-                draw_dot(&mut gizmos, *last, 0.03, Color::srgb(1.0, 0.0, 0.0));
+                draw_dot(
+                    &mut gizmos,
+                    *last,
+                    SEGMENT_BOUNDARY_DOT_SIZE,
+                    SEGMENT_BOUNDARY_COLOR,
+                );
             }
         }
     }
@@ -184,8 +206,14 @@ fn draw_dot(gizmos: &mut Gizmos<CableGizmoGroup>, point: Vec3, size: f32, color:
 }
 
 /// Resource that toggles detailed debug visualization.
-#[derive(Default, Resource)]
-pub struct CableDebugEnabled(pub bool);
+#[derive(Clone, Debug, Default, PartialEq, Eq, Resource)]
+pub enum DebugGizmos {
+    /// Debug gizmos are rendered.
+    Enabled,
+    /// Debug gizmos are hidden.
+    #[default]
+    Disabled,
+}
 
 /// Observer that generates or updates the cable mesh when geometry is (re)computed.
 ///
