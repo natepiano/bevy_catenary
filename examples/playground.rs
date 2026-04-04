@@ -22,8 +22,8 @@ use std::time::Duration;
 
 use bevy::light::NotShadowCaster;
 use bevy::math::curve::easing::EaseFunction;
-use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::picking::Pickable;
+use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::prelude::*;
 use bevy_brp_extras::BrpExtrasPlugin;
 use bevy_catenary::AttachedTo;

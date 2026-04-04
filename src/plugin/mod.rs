@@ -20,20 +20,20 @@ pub use components::CableEnd;
 pub use components::CableEndpoint;
 pub use components::ComputedCableGeometry;
 pub use components::DetachPolicy;
-pub use mesh::compute_elbow_metadata;
-pub use mesh::generate_tube_mesh;
 pub use mesh::CableMeshConfig;
 pub use mesh::CapStyle;
 pub use mesh::ElbowMetadata;
 pub use mesh::FaceSides;
+pub use mesh::compute_elbow_metadata;
+pub use mesh::generate_tube_mesh;
+pub use systems::CableMeshChild;
+pub use systems::CableMeshHandle;
+pub use systems::DebugGizmos;
 use systems::compute_cable_routes;
 use systems::on_endpoint_detached;
 use systems::on_geometry_computed;
 use systems::render_cable_gizmos;
 use systems::render_debug_gizmos;
-pub use systems::CableMeshChild;
-pub use systems::CableMeshHandle;
-pub use systems::DebugGizmos;
 
 /// Gizmo group for cable debug wireframes.
 ///
