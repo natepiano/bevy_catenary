@@ -24,6 +24,7 @@ pub enum CableEnd {
 /// - **Entity-attached** (with `AttachedTo`): `offset` is in the target entity's local space. The
 ///   system transforms it to world space via the target's [`GlobalTransform`].
 #[derive(Component, Clone, Debug, Reflect)]
+#[reflect(Component)]
 pub struct CableEndpoint {
     /// Which end of the cable this represents.
     pub end:           CableEnd,
@@ -101,6 +102,7 @@ pub struct AttachedEndpoints(Vec<Entity>);
 /// The cable itself stores the solver, obstacles, and resolution. Endpoint positions
 /// come from child entities with [`CableEndpoint`] components.
 #[derive(Component, Clone, Debug, Reflect)]
+#[reflect(Component)]
 #[require(ComputedCableGeometry, CableMeshConfig, Transform, Visibility)]
 pub struct Cable {
     /// The routing algorithm to use.

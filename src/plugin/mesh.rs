@@ -12,17 +12,13 @@ use bevy_kana::ToUsize;
 
 use crate::routing::CableGeometry;
 
-/// Default elbow bend radius multiplier (used in `CableMeshConfig::default`).
-const ELBOW_BEND_RADIUS_MULTIPLIER: f32 = 1.0;
-
-/// Default minimum elbow radius multiplier (used in `CableMeshConfig::default`).
-const MIN_ELBOW_RADIUS_MULTIPLIER: f32 = 0.5;
-
-/// Default rings per 90 degrees of bend (used in `CableMeshConfig::default`).
-const KNEE_RINGS_PER_RIGHT_ANGLE: u32 = 32;
-
-/// Default arm multiplier for Bézier control points (used in `CableMeshConfig::default`).
-const DEFAULT_ARM_MULTIPLIER: f32 = 1.0;
+use super::constants::DEFAULT_ARM_MULTIPLIER;
+use super::constants::DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG;
+use super::constants::DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER;
+use super::constants::DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE;
+use super::constants::DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER;
+use super::constants::DEFAULT_TUBE_RADIUS;
+use super::constants::DEFAULT_TUBE_SIDES;
 
 /// Push a triangle with correct winding. When `flip` is true, the winding is reversed
 /// so that the face normal points the opposite direction.
@@ -147,6 +143,7 @@ enum CapSide {
 /// Configuration for cable mesh generation. Attach to a [`Cable`] entity to control
 /// how its tube mesh is rendered.
 #[derive(Component, Clone, Debug, Reflect)]
+#[reflect(Component)]
 pub struct CableMeshConfig {
     /// Radius of the tube cross-section.
     pub radius:                       f32,
@@ -184,16 +181,16 @@ pub struct CableMeshConfig {
 impl Default for CableMeshConfig {
     fn default() -> Self {
         Self {
-            radius:                       0.06,
-            sides:                        32,
+            radius:                       DEFAULT_TUBE_RADIUS,
+            sides:                        DEFAULT_TUBE_SIDES,
             cap_start:                    CapStyle::Round,
             cap_end:                      CapStyle::Round,
             trim_start:                   0.0,
             trim_end:                     0.0,
-            elbow_bend_radius_multiplier: ELBOW_BEND_RADIUS_MULTIPLIER,
-            elbow_min_radius_multiplier:  MIN_ELBOW_RADIUS_MULTIPLIER,
-            elbow_rings_per_right_angle:  KNEE_RINGS_PER_RIGHT_ANGLE,
-            elbow_angle_threshold_deg:    25.0,
+            elbow_bend_radius_multiplier: DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER,
+            elbow_min_radius_multiplier:  DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER,
+            elbow_rings_per_right_angle:  DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE,
+            elbow_angle_threshold_deg:    DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG,
             elbow_arm_multiplier:         DEFAULT_ARM_MULTIPLIER,
             elbow_arm_overrides:          None,
             face_sides:                   FaceSides::default(),

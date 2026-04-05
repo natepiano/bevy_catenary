@@ -9,7 +9,9 @@ use bevy_kana::Position;
 use bevy_kana::ToF32;
 use bevy_kana::ToI32;
 
+use super::constants::ASTAR_SEGMENT_SAMPLE_STEPS;
 use super::constants::COLLINEARITY_THRESHOLD;
+use super::constants::DEFAULT_ASTAR_MAX_CELLS;
 use super::constants::DEFAULT_GRID_SIZE;
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
 use super::solver::PathPlanner;
@@ -77,7 +79,7 @@ impl Default for AStarPlanner {
         Self {
             grid_size: DEFAULT_GRID_SIZE,
             margin:    DEFAULT_OBSTACLE_MARGIN,
-            max_cells: 10_000,
+            max_cells: DEFAULT_ASTAR_MAX_CELLS,
         }
     }
 }
@@ -261,7 +263,7 @@ impl PathPlanner for AStarPlanner {
 impl AStarPlanner {
     /// Check if any obstacle intersects the direct line from start to end.
     fn is_direct_path_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_segment_blocked(Position(start), Position(end), obstacles, self.margin, 20)
+        types::is_segment_blocked(Position(start), Position(end), obstacles, self.margin, ASTAR_SEGMENT_SAMPLE_STEPS)
     }
 }
 

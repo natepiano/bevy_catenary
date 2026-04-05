@@ -4,6 +4,7 @@ use bevy::math::Vec3;
 use bevy_kana::Position;
 
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
+use super::constants::ORTHOGONAL_SEGMENT_SAMPLE_STEPS;
 use super::solver::PathPlanner;
 use super::types;
 use super::types::Obstacle;
@@ -60,7 +61,7 @@ impl OrthogonalPlanner {
 
     /// Check if an axis-aligned segment between two points is blocked.
     fn is_segment_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_segment_blocked(Position(start), Position(end), obstacles, self.margin, 10)
+        types::is_segment_blocked(Position(start), Position(end), obstacles, self.margin, ORTHOGONAL_SEGMENT_SAMPLE_STEPS)
     }
 
     /// Build an axis-aligned path moving one axis at a time in the given order.

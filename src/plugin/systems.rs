@@ -119,14 +119,14 @@ pub fn compute_cable_routes(
 
 /// Renders cable geometry as gizmo lines (only when debug is enabled).
 pub fn render_cable_gizmos(
-    cables: Query<(&ComputedCableGeometry, &GlobalTransform)>,
+    cables: Query<&ComputedCableGeometry>,
     mut gizmos: Gizmos<CableGizmoGroup>,
     debug_enabled: Res<DebugGizmos>,
 ) {
     if *debug_enabled == DebugGizmos::Disabled {
         return;
     }
-    for (computed, _global_transform) in &cables {
+    for computed in &cables {
         let Some(geometry) = &computed.geometry else {
             continue;
         };

@@ -43,35 +43,35 @@ pub fn evaluate(x: f32, a: f32) -> f32 { a * (x / a).cosh() }
 /// Returns `None` if the problem is degenerate or Newton's method fails to converge.
 #[must_use]
 pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f32) -> Option<f32> {
-    let horiz = horizontal_dist.abs();
-    let vert = vertical_dist;
+    let horizontal = horizontal_dist.abs();
+    let vertical = vertical_dist;
     let length = cable_length;
 
     // Cable must be longer than straight-line distance
-    let straight = horiz.hypot(vert);
+    let straight = horizontal.hypot(vertical);
     if length <= straight + MIN_SEGMENT_LENGTH {
         return None;
     }
 
     // If horizontal distance is near zero, degenerate to vertical hang
-    if horiz < MIN_SEGMENT_LENGTH {
+    if horizontal < MIN_SEGMENT_LENGTH {
         return None;
     }
 
     // We need to solve: L^2 - v^2 = (2a * sinh(h / (2a)))^2
     // Let f(a) = 2a * sinh(h/(2a)) - sqrt(L^2 - v^2)
     // Newton: a_{n+1} = a_n - f(a_n) / f'(a_n)
-    let target = length.mul_add(length, -(vert * vert)).sqrt();
+    let target = length.mul_add(length, -(vertical * vertical)).sqrt();
 
     // Initial guess using the large-`a` approximation:
     // 2a*sinh(h/(2a)) ≈ h + h³/(24a²) = target  →  a = h * sqrt(h / (24*(target - h)))
     // This is far more stable than `a = h` which puts us near a zero of f'(a).
-    let excess = target - horiz;
+    let excess = target - horizontal;
     let mut param = if excess > MIN_SEGMENT_LENGTH {
-        horiz * (horiz / (24.0 * excess)).sqrt()
+        horizontal * (horizontal / (24.0 * excess)).sqrt()
     } else {
         // target ≈ h means near-taut cable; start with a large `a`
-        horiz * 10.0
+        horizontal * 10.0
     };
 
     for _ in 0..MAX_NEWTON_ITERATIONS {
@@ -79,13 +79,13 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
             param = MIN_CATENARY_PARAM;
         }
 
-        let half_h_over_a = horiz / (2.0 * param);
-        let sinh_val = half_h_over_a.sinh();
-        let cosh_val = half_h_over_a.cosh();
+        let half_horizontal_over_a = horizontal / (2.0 * param);
+        let sinh_val = half_horizontal_over_a.sinh();
+        let cosh_val = half_horizontal_over_a.cosh();
 
         let residual = (2.0 * param).mul_add(sinh_val, -target);
         // f'(a) = 2*sinh(h/(2a)) - (h/a)*cosh(h/(2a))
-        let f_prime = 2.0f32.mul_add(sinh_val, -(horiz / param) * cosh_val);
+        let f_prime = 2.0f32.mul_add(sinh_val, -(horizontal / param) * cosh_val);
 
         if f_prime.abs() < f32::EPSILON {
             break;
@@ -156,7 +156,7 @@ pub fn sample_3d(
         return sample_vertical_hang(start, end, gravity_norm, cable_length, n);
     }
 
-    let h_axis = horizontal_vec / horizontal_dist;
+    let horizontal_axis = horizontal_vec / horizontal_dist;
 
     // Solve for catenary parameter
     let Some(catenary_a) = solve_parameter(horizontal_dist, vertical_component, cable_length)
@@ -169,15 +169,15 @@ pub fn sample_3d(
 
     // Find the horizontal offset of the catenary's lowest point
     // x_offset = h/2 - a * arcsinh(v / (2a * sinh(h/(2a))))
-    let half_h = horizontal_dist / 2.0;
-    let sinh_half_h_a = (half_h / catenary_a).sinh();
+    let half_horizontal = horizontal_dist / 2.0;
+    let sinh_half_h_a = (half_horizontal / catenary_a).sinh();
     let x_offset = if sinh_half_h_a.abs() > f32::EPSILON {
         catenary_a.mul_add(
             -(vertical_component / (2.0 * catenary_a * sinh_half_h_a)).asinh(),
-            half_h,
+            half_horizontal,
         )
     } else {
-        half_h
+        half_horizontal
     };
 
     // y_offset positions the curve so it passes through the start point
@@ -201,7 +201,7 @@ pub fn sample_3d(
         //   - sag part: against gravity (cable hangs downward)
         let y_linear = t * y_2d_end;
         let y_sag = y_2d - y_linear;
-        let point = start + x_2d * h_axis + (y_linear - y_sag) * gravity_norm;
+        let point = start + x_2d * horizontal_axis + (y_linear - y_sag) * gravity_norm;
         points.push(point);
     }
 
