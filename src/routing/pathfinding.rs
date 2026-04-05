@@ -263,7 +263,13 @@ impl PathPlanner for AStarPlanner {
 impl AStarPlanner {
     /// Check if any obstacle intersects the direct line from start to end.
     fn is_direct_path_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_segment_blocked(Position(start), Position(end), obstacles, self.margin, ASTAR_SEGMENT_SAMPLE_STEPS)
+        types::is_segment_blocked(
+            Position(start),
+            Position(end),
+            obstacles,
+            self.margin,
+            ASTAR_SEGMENT_SAMPLE_STEPS,
+        )
     }
 }
 

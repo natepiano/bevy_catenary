@@ -10,8 +10,6 @@ use bevy_kana::ToF32;
 use bevy_kana::ToU32;
 use bevy_kana::ToUsize;
 
-use crate::routing::CableGeometry;
-
 use super::constants::DEFAULT_ARM_MULTIPLIER;
 use super::constants::DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG;
 use super::constants::DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER;
@@ -19,6 +17,7 @@ use super::constants::DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE;
 use super::constants::DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER;
 use super::constants::DEFAULT_TUBE_RADIUS;
 use super::constants::DEFAULT_TUBE_SIDES;
+use crate::routing::CableGeometry;
 
 /// Push a triangle with correct winding. When `flip` is true, the winding is reversed
 /// so that the face normal points the opposite direction.

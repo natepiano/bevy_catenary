@@ -61,7 +61,13 @@ impl OrthogonalPlanner {
 
     /// Check if an axis-aligned segment between two points is blocked.
     fn is_segment_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_segment_blocked(Position(start), Position(end), obstacles, self.margin, ORTHOGONAL_SEGMENT_SAMPLE_STEPS)
+        types::is_segment_blocked(
+            Position(start),
+            Position(end),
+            obstacles,
+            self.margin,
+            ORTHOGONAL_SEGMENT_SAMPLE_STEPS,
+        )
     }
 
     /// Build an axis-aligned path moving one axis at a time in the given order.
