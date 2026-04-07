@@ -23,6 +23,8 @@ use super::constants::DEFAULT_SLACK;
 use super::constants::MAX_NEWTON_ITERATIONS;
 use super::constants::MIN_CATENARY_PARAM;
 use super::constants::MIN_SEGMENT_LENGTH;
+use super::constants::NEAR_TAUT_INITIAL_GUESS_MULTIPLIER;
+use super::constants::NEAR_ZERO_GRAVITY_THRESHOLD;
 use super::constants::NEWTON_TOLERANCE;
 use super::constants::STRAIGHT_LINE_THRESHOLD;
 use super::solver::CurveSolver;
@@ -71,7 +73,7 @@ pub fn solve_parameter(horizontal_dist: f32, vertical_dist: f32, cable_length: f
         horizontal * (horizontal / (24.0 * excess)).sqrt()
     } else {
         // target ≈ h means near-taut cable; start with a large `a`
-        horizontal * 10.0
+        horizontal * NEAR_TAUT_INITIAL_GUESS_MULTIPLIER
     };
 
     for _ in 0..MAX_NEWTON_ITERATIONS {
@@ -137,7 +139,7 @@ pub fn sample_3d(
     }
 
     // If gravity is zero, fall back to straight line
-    if gravity_norm.length_squared() < 0.5 {
+    if gravity_norm.length_squared() < NEAR_ZERO_GRAVITY_THRESHOLD {
         return sample_straight_line(start, end, n);
     }
 

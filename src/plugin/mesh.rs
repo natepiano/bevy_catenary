@@ -17,13 +17,25 @@ use super::constants::DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE;
 use super::constants::DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER;
 use super::constants::DEFAULT_TUBE_RADIUS;
 use super::constants::DEFAULT_TUBE_SIDES;
+use super::constants::MAX_ARM_RATIO;
+use super::constants::MIN_CAP_RINGS;
 use crate::routing::CableGeometry;
+use crate::routing::MIN_SEGMENT_LENGTH;
 
-/// Push a triangle with correct winding. When `flip` is true, the winding is reversed
+/// Controls triangle winding order for mesh face generation.
+#[derive(Clone, Copy, Debug)]
+enum WindingOrder {
+    /// Standard winding — normals point outward.
+    Standard,
+    /// Reversed winding — normals point inward.
+    Reversed,
+}
+
+/// Push a triangle with correct winding. When `Reversed`, the winding is flipped
 /// so that the face normal points the opposite direction.
-fn push_tri(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, flip: bool) {
+fn push_triangle(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, winding: WindingOrder) {
     indices.push(a);
-    if flip {
+    if matches!(winding, WindingOrder::Reversed) {
         indices.push(c);
         indices.push(b);
     } else {
@@ -32,11 +44,11 @@ fn push_tri(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, flip: bool) {
     }
 }
 
-/// Push a quad (two triangles) between two ring edges. When `flip` is true,
-/// the winding is reversed so that face normals point the opposite direction.
-fn push_quad(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, d: u32, flip: bool) {
-    push_tri(indices, a, b, c, flip);
-    push_tri(indices, b, d, c, flip);
+/// Push a quad (two triangles) between two ring edges. When `Reversed`,
+/// the winding is flipped so that face normals point the opposite direction.
+fn push_quad(indices: &mut Vec<u32>, a: u32, b: u32, c: u32, d: u32, winding: WindingOrder) {
+    push_triangle(indices, a, b, c, winding);
+    push_triangle(indices, b, d, c, winding);
 }
 
 /// Immutable path data for tube mesh generation: points, tangents, arc lengths, and RMF frames.
@@ -171,7 +183,7 @@ pub struct CableMeshConfig {
     pub face_sides:                   FaceSides,
     /// Material to apply to the generated mesh. If `None`, no material is added.
     pub material:                     Option<Handle<StandardMaterial>>,
-    /// Per-elbow arm overrides as `(p1_arm, p2_arm)` distances.
+    /// Per-elbow arm overrides as `(control1_arm, control2_arm)` distances.
     /// When set, each elbow uses its own independent arm lengths instead of the global
     /// `elbow_arm_multiplier`. `None` = use the global multiplier for all elbows.
     pub elbow_arm_overrides:          Option<Vec<(f32, f32)>>,
@@ -252,97 +264,89 @@ fn add_end_caps(
 
     let negate_outside = matches!(config.face_sides, FaceSides::Inside);
 
-    // Start cap
-    add_single_cap(
-        &config.cap_start,
-        &all_points[0],
-        -all_tangents[0],
-        frames[0],
-        config.radius,
+    // Start cap — original: flip_winding = !negate_outside
+    let start_winding = if negate_outside {
+        WindingOrder::Standard
+    } else {
+        WindingOrder::Reversed
+    };
+    let start_context = CapContext {
+        center: &all_points[0],
+        direction: -all_tangents[0],
+        frame: frames[0],
+        radius: config.radius,
         sides,
-        0,
-        &config.face_sides,
-        !negate_outside,
-        buffers,
-    );
+        ring_base: 0,
+        face_sides: &config.face_sides,
+        winding: start_winding,
+    };
+    add_single_cap(&config.cap_start, &start_context, buffers);
 
     // End cap
     let last = point_count - 1;
     let last_ring_base = (last * sides.to_usize()).to_u32();
-    add_single_cap(
-        &config.cap_end,
-        &all_points[last],
-        all_tangents[last],
-        frames[last],
-        config.radius,
+    // End cap — original: flip_winding = negate_outside
+    let end_winding = if negate_outside {
+        WindingOrder::Reversed
+    } else {
+        WindingOrder::Standard
+    };
+    let end_context = CapContext {
+        center: &all_points[last],
+        direction: all_tangents[last],
+        frame: frames[last],
+        radius: config.radius,
         sides,
-        last_ring_base,
-        &config.face_sides,
-        negate_outside,
-        buffers,
-    );
+        ring_base: last_ring_base,
+        face_sides: &config.face_sides,
+        winding: end_winding,
+    };
+    add_single_cap(&config.cap_end, &end_context, buffers);
+}
+
+/// Geometric parameters shared by all cap-generation helpers.
+struct CapContext<'a> {
+    center:     &'a Vec3,
+    direction:  Vec3,
+    frame:      (Vec3, Vec3),
+    radius:     f32,
+    sides:      u32,
+    ring_base:  u32,
+    face_sides: &'a FaceSides,
+    winding:    WindingOrder,
 }
 
 /// Dispatch a single cap (start or end) based on style, generating outside and/or inside faces.
-fn add_single_cap(
-    style: &CapStyle,
-    point: &Vec3,
-    tangent_dir: Vec3,
-    frame: (Vec3, Vec3),
-    radius: f32,
-    sides: u32,
-    ring_base: u32,
-    face_sides: &FaceSides,
-    flip_winding: bool,
-    buffers: &mut MeshBuffers,
-) {
-    let needs_outside = matches!(face_sides, FaceSides::Outside | FaceSides::Both);
-    let needs_inside = matches!(face_sides, FaceSides::Inside | FaceSides::Both);
+fn add_single_cap(style: &CapStyle, context: &CapContext, buffers: &mut MeshBuffers) {
+    let needs_outside = matches!(context.face_sides, FaceSides::Outside | FaceSides::Both);
+    let needs_inside = matches!(context.face_sides, FaceSides::Inside | FaceSides::Both);
 
-    let cap_rings = sides.max(8);
+    let cap_rings = context.sides.max(MIN_CAP_RINGS);
 
     match style {
         CapStyle::Round => {
-            let (normal, binormal) = frame;
             for &cap_side in &[CapSide::Outside, CapSide::Inside] {
                 let needed = match cap_side {
                     CapSide::Outside => needs_outside,
                     CapSide::Inside => needs_inside,
                 };
                 if needed {
-                    add_hemisphere_cap(
-                        point,
-                        &tangent_dir,
-                        &normal,
-                        &binormal,
-                        radius,
-                        sides,
-                        cap_rings,
-                        ring_base,
-                        cap_side,
-                        flip_winding,
-                        buffers,
-                    );
+                    add_hemisphere_cap(context, cap_rings, cap_side, buffers);
                 }
             }
         },
         CapStyle::Flat { normal } => {
-            let dir = normal.unwrap_or(tangent_dir);
+            let flat_context = CapContext {
+                direction: normal.unwrap_or(context.direction),
+                ..*context
+            };
             for &cap_side in &[CapSide::Outside, CapSide::Inside] {
                 let needed = match cap_side {
                     CapSide::Outside => needs_outside,
                     CapSide::Inside => needs_inside,
                 };
                 if needed {
-                    add_flat_cap(
-                        point,
-                        &dir,
-                        ring_base,
-                        sides,
-                        cap_side,
-                        flip_winding,
-                        buffers,
-                    );
+                    add_flat_cap(&flat_context, cap_side, buffers);
                 }
             }
         },
@@ -404,7 +408,7 @@ fn generate_tube_rings(
                             curr_j_next,
                             next_j,
                             next_j_next,
-                            false,
+                            WindingOrder::Standard,
                         );
                     },
                     FaceSides::Inside => {
@@ -414,7 +418,7 @@ fn generate_tube_rings(
                             curr_j_next,
                             next_j,
                             next_j_next,
-                            true,
+                            WindingOrder::Reversed,
                         );
                     },
                     FaceSides::Both => {
@@ -424,7 +428,7 @@ fn generate_tube_rings(
                             curr_j_next,
                             next_j,
                             next_j_next,
-                            false,
+                            WindingOrder::Standard,
                         );
                         push_quad(
                             out.inside_indices,
@@ -432,7 +436,7 @@ fn generate_tube_rings(
                             curr_j_next,
                             next_j,
                             next_j_next,
-                            true,
+                            WindingOrder::Reversed,
                         );
                     },
                 }
@@ -485,7 +489,7 @@ fn apply_inside_normals(
 #[must_use]
 pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) -> Mesh {
     let sides = config.sides.max(3);
-    let total_length = geometry.total_length.max(0.001);
+    let total_length = geometry.total_length.max(MIN_SEGMENT_LENGTH);
 
     let flat = flatten_geometry(geometry);
     let mut all_points = flat.points;
@@ -808,23 +812,23 @@ fn recompute_tangents(points: &[Vec3]) -> Vec<Vec3> {
 #[derive(Clone, Debug)]
 pub struct ElbowMetadata {
     /// Fillet start point (on incoming straight section).
-    pub p0:      Vec3,
+    pub p0:           Vec3,
     /// First control point (along incoming direction from `p0`).
-    pub p1:      Vec3,
+    pub p1:           Vec3,
     /// Second control point (along outgoing direction toward `p3`).
-    pub p2:      Vec3,
+    pub p2:           Vec3,
     /// Fillet end point (on outgoing straight section).
-    pub p3:      Vec3,
+    pub p3:           Vec3,
     /// Incoming segment direction at the elbow.
-    pub dir_in:  Vec3,
+    pub dir_in:       Vec3,
     /// Outgoing segment direction at the elbow.
-    pub dir_out: Vec3,
+    pub dir_out:      Vec3,
     /// Arm length for P1 (distance from `p0` to `p1` along `dir_in`).
-    pub p1_arm:  f32,
+    pub control1_arm: f32,
     /// Arm length for P2 (distance from `p3` to `p2` along `-dir_out`).
-    pub p2_arm:  f32,
+    pub control2_arm: f32,
     /// Fillet reach distance — maximum arm before loops form.
-    pub d:       f32,
+    pub fillet_reach: f32,
 }
 
 /// Pre-computed elbow detection parameters extracted from `CableMeshConfig`.
@@ -872,10 +876,10 @@ fn compute_elbow_at_corner(
 
     let p0 = corner - dir_in * fillet_reach;
     let p3 = corner + dir_out * fillet_reach;
-    let max_arm = fillet_reach * 0.95;
-    let (p1_arm, p2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
-    let p1 = p0 + dir_in * p1_arm;
-    let p2 = p3 - dir_out * p2_arm;
+    let max_arm = fillet_reach * MAX_ARM_RATIO;
+    let (control1_arm, control2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
+    let p1 = p0 + dir_in * control1_arm;
+    let p2 = p3 - dir_out * control2_arm;
 
     Some(ElbowMetadata {
         p0,
@@ -884,9 +888,9 @@ fn compute_elbow_at_corner(
         p3,
         dir_in,
         dir_out,
-        p1_arm,
-        p2_arm,
-        d: fillet_reach,
+        control1_arm,
+        control2_arm,
+        fillet_reach,
     })
 }
 
@@ -950,21 +954,21 @@ pub fn compute_elbow_metadata(
 /// `CapSide::Inside` duplicates the equator ring with negated normals, negates all
 /// generated normals, and flips winding order for correct interior lighting.
 fn add_hemisphere_cap(
-    center: &Vec3,
-    cap_direction: &Vec3,
-    frame_normal: &Vec3,
-    binormal: &Vec3,
-    radius: f32,
-    sides: u32,
+    context: &CapContext,
     cap_rings: u32,
-    equator_ring_base: u32,
     side: CapSide,
-    flip_winding: bool,
     buffers: &mut MeshBuffers,
 ) {
+    let center = context.center;
+    let cap_direction = &context.direction;
+    let (frame_normal, binormal) = &context.frame;
+    let radius = context.radius;
+    let sides = context.sides;
+    let equator_ring_base = context.ring_base;
+
     let (normal_sign, winding) = match side {
-        CapSide::Outside => (1.0_f32, flip_winding),
-        CapSide::Inside => (-1.0_f32, false),
+        CapSide::Outside => (1.0_f32, context.winding),
+        CapSide::Inside => (-1.0_f32, WindingOrder::Standard),
     };
 
     // For inside caps, duplicate the equator ring with negated normals
@@ -1028,7 +1032,7 @@ fn add_hemisphere_cap(
     // Fan from last ring to pole
     for j in 0..sides {
         let j_next = (j + 1) % sides;
-        push_tri(
+        push_triangle(
             buffers.indices,
             prev_ring_base + j,
             prev_ring_base + j_next,
@@ -1044,18 +1048,15 @@ fn add_hemisphere_cap(
 /// A center vertex is added and a triangle fan connects it to the ring.
 ///
 /// `CapSide::Inside` negates the cap normal and flips winding for interior lighting.
-fn add_flat_cap(
-    center: &Vec3,
-    cap_direction: &Vec3,
-    ring_base: u32,
-    sides: u32,
-    side: CapSide,
-    flip_winding: bool,
-    buffers: &mut MeshBuffers,
-) {
+fn add_flat_cap(context: &CapContext, side: CapSide, buffers: &mut MeshBuffers) {
+    let center = context.center;
+    let cap_direction = &context.direction;
+    let ring_base = context.ring_base;
+    let sides = context.sides;
+
     let (cap_normal, winding) = match side {
-        CapSide::Outside => (cap_direction.to_array(), flip_winding),
-        CapSide::Inside => ((-*cap_direction).to_array(), true),
+        CapSide::Outside => (cap_direction.to_array(), context.winding),
+        CapSide::Inside => ((-*cap_direction).to_array(), WindingOrder::Reversed),
     };
 
     // Duplicate the ring vertices with flat normals so the cap renders flat.
@@ -1079,7 +1080,7 @@ fn add_flat_cap(
     // Triangle fan from duplicated ring to center
     for j in 0..sides {
         let j_next = (j + 1) % sides;
-        push_tri(
+        push_triangle(
             buffers.indices,
             new_ring_base + j,
             new_ring_base + j_next,
