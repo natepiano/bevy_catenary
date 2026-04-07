@@ -48,8 +48,10 @@ use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 use bevy_kana::Position;
 use bevy_lagrange::LagrangePlugin;
+use bevy_lagrange::InputControl;
 use bevy_lagrange::OrbitCam;
 use bevy_lagrange::TrackpadBehavior;
+use bevy_lagrange::TrackpadInput;
 use bevy_lagrange::ZoomToFit;
 
 // ============================================================================
@@ -323,12 +325,16 @@ fn setup_camera(mut commands: Commands) {
             button_orbit: MouseButton::Middle,
             button_pan: MouseButton::Middle,
             modifier_pan: Some(KeyCode::ShiftLeft),
-            trackpad_behavior: TrackpadBehavior::BlenderLike {
-                modifier_pan:  Some(KeyCode::ShiftLeft),
-                modifier_zoom: Some(KeyCode::ControlLeft),
-            },
-            trackpad_pinch_to_zoom_enabled: true,
-            trackpad_sensitivity: 0.3,
+            input_control: Some(InputControl {
+                trackpad: Some(TrackpadInput {
+                    behavior: TrackpadBehavior::BlenderLike {
+                        modifier_pan: Some(KeyCode::ShiftLeft),
+                        modifier_zoom: Some(KeyCode::ControlLeft),
+                    },
+                    sensitivity: 0.3,
+                }),
+                ..Default::default()
+            }),
             focus,
             target_focus: focus,
             yaw: Some(0.0),
