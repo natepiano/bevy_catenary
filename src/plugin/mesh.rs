@@ -180,7 +180,7 @@ pub struct CableMeshConfig {
     /// Controls how far P1/P2 extend from P0/P3: `arm = (distance / 3.0) * multiplier`.
     pub elbow_arm_multiplier:         f32,
     /// Which sides of the tube surface to render.
-    pub face_sides:                   FaceSides,
+    pub faces:                        FaceSides,
     /// Material to apply to the generated mesh. If `None`, no material is added.
     pub material:                     Option<Handle<StandardMaterial>>,
     /// Per-elbow arm overrides as `(control1_arm, control2_arm)` distances.
@@ -204,7 +204,7 @@ impl Default for CableMeshConfig {
             elbow_angle_threshold_deg:    DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG,
             elbow_arm_multiplier:         DEFAULT_ARM_MULTIPLIER,
             elbow_arm_overrides:          None,
-            face_sides:                   FaceSides::default(),
+            faces:                        FaceSides::default(),
             material:                     None,
         }
     }
@@ -262,7 +262,7 @@ fn add_end_caps(
         return;
     }
 
-    let negate_outside = matches!(config.face_sides, FaceSides::Inside);
+    let negate_outside = matches!(config.faces, FaceSides::Inside);
 
     // Start cap — original: flip_winding = !negate_outside
     let start_winding = if negate_outside {
@@ -277,7 +277,7 @@ fn add_end_caps(
         radius: config.radius,
         sides,
         ring_base: 0,
-        face_sides: &config.face_sides,
+        faces: &config.faces,
         winding: start_winding,
     };
     add_single_cap(&config.cap_start, &start_context, buffers);
@@ -298,7 +298,7 @@ fn add_end_caps(
         radius: config.radius,
         sides,
         ring_base: last_ring_base,
-        face_sides: &config.face_sides,
+        faces: &config.faces,
         winding: end_winding,
     };
     add_single_cap(&config.cap_end, &end_context, buffers);
@@ -306,20 +306,20 @@ fn add_end_caps(
 
 /// Geometric parameters shared by all cap-generation helpers.
 struct CapContext<'a> {
-    center:     &'a Vec3,
-    direction:  Vec3,
-    frame:      (Vec3, Vec3),
-    radius:     f32,
-    sides:      u32,
-    ring_base:  u32,
-    face_sides: &'a FaceSides,
-    winding:    WindingOrder,
+    center:    &'a Vec3,
+    direction: Vec3,
+    frame:     (Vec3, Vec3),
+    radius:    f32,
+    sides:     u32,
+    ring_base: u32,
+    faces:     &'a FaceSides,
+    winding:   WindingOrder,
 }
 
 /// Dispatch a single cap (start or end) based on style, generating outside and/or inside faces.
 fn add_single_cap(style: &CapStyle, context: &CapContext, buffers: &mut MeshBuffers) {
-    let needs_outside = matches!(context.face_sides, FaceSides::Outside | FaceSides::Both);
-    let needs_inside = matches!(context.face_sides, FaceSides::Inside | FaceSides::Both);
+    let needs_outside = matches!(context.faces, FaceSides::Outside | FaceSides::Both);
+    let needs_inside = matches!(context.faces, FaceSides::Inside | FaceSides::Both);
 
     let cap_rings = context.sides.max(MIN_CAP_RINGS);
 
@@ -400,7 +400,7 @@ fn generate_tube_rings(
                 let next_j = next_base + j;
                 let next_j_next = next_base + j_next;
 
-                match config.face_sides {
+                match config.faces {
                     FaceSides::Outside => {
                         push_quad(
                             out.buffers.indices,
@@ -447,14 +447,14 @@ fn generate_tube_rings(
 
 /// For `Inside` or `Both` face sides, adjust normals so interior faces receive correct lighting.
 fn apply_inside_normals(
-    face_sides: &FaceSides,
+    faces: &FaceSides,
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     uvs: &mut Vec<[f32; 2]>,
     indices: &mut Vec<u32>,
     inside_indices: &mut Vec<u32>,
 ) {
-    match face_sides {
+    match faces {
         FaceSides::Outside => {},
         FaceSides::Inside => {
             for n in &mut *normals {
@@ -552,7 +552,7 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
     );
 
     apply_inside_normals(
-        &config.face_sides,
+        &config.faces,
         &mut positions,
         &mut normals,
         &mut uvs,

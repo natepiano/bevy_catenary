@@ -37,6 +37,7 @@ use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::ComputedCableGeometry;
 use bevy_catenary::Curve;
+use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::DebugGizmos;
 use bevy_catenary::DetachPolicy;
 use bevy_catenary::Obstacle;
@@ -47,8 +48,8 @@ use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 use bevy_kana::Position;
-use bevy_lagrange::LagrangePlugin;
 use bevy_lagrange::InputControl;
+use bevy_lagrange::LagrangePlugin;
 use bevy_lagrange::OrbitCam;
 use bevy_lagrange::TrackpadBehavior;
 use bevy_lagrange::TrackpadInput;
@@ -327,8 +328,8 @@ fn setup_camera(mut commands: Commands) {
             modifier_pan: Some(KeyCode::ShiftLeft),
             input_control: Some(InputControl {
                 trackpad: Some(TrackpadInput {
-                    behavior: TrackpadBehavior::BlenderLike {
-                        modifier_pan: Some(KeyCode::ShiftLeft),
+                    behavior:    TrackpadBehavior::BlenderLike {
+                        modifier_pan:  Some(KeyCode::ShiftLeft),
                         modifier_zoom: Some(KeyCode::ControlLeft),
                     },
                     sensitivity: 0.3,
@@ -573,7 +574,7 @@ fn setup_section_cap_styles(
             CableMeshConfig {
                 radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
                 material: Some(transparent_mat),
-                face_sides: bevy_catenary::FaceSides::Both,
+                faces: bevy_catenary::FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
@@ -596,7 +597,7 @@ fn setup_section_cap_styles(
             CableMeshConfig {
                 radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
                 material: Some(cable_mat.clone()),
-                face_sides: bevy_catenary::FaceSides::Both,
+                faces: bevy_catenary::FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
@@ -619,7 +620,7 @@ fn setup_section_cap_styles(
             CableMeshConfig {
                 radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
                 material: Some(cable_mat.clone()),
-                face_sides: bevy_catenary::FaceSides::Both,
+                faces: bevy_catenary::FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
@@ -801,7 +802,7 @@ fn setup_section_shared_hub(
         commands
             .spawn((
                 Cable {
-                    solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+                    solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
                     obstacles:  vec![],
                     resolution: 0,
                 },
@@ -842,7 +843,7 @@ fn setup_section_astar(
         end,
         Solver::Routed {
             planner:    Planner::AStar,
-            curve:      Curve::Catenary(CatenarySolver::new().with_slack(1.2)),
+            curve:      Curve::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             resolution: 0,
         },
         vec![obstacle],
@@ -890,7 +891,7 @@ fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<Standar
             CableMeshConfig {
                 radius: TUBE_RADIUS * INSIDE_VIEW_RADIUS_MULTIPLIER,
                 sides: 64,
-                face_sides: bevy_catenary::FaceSides::Both,
+                faces: bevy_catenary::FaceSides::Both,
                 material: Some(cable_mat.clone()),
                 ..default()
             },

@@ -190,22 +190,21 @@ pub fn sample_3d(
     let y_2d_end = catenary_a.mul_add(((horizontal_dist - x_offset) / catenary_a).cosh(), y_offset);
 
     // Sample points along the 2D catenary and map back to 3D
-    let mut points = Vec::with_capacity(n);
+    let points: Vec<Vec3> = (0..n)
+        .map(|i| {
+            let t = i.to_f32() / (n - 1).to_f32();
+            let x_2d = t * horizontal_dist;
+            let y_2d = catenary_a.mul_add(((x_2d - x_offset) / catenary_a).cosh(), y_offset);
 
-    for i in 0..n {
-        let t = i.to_f32() / (n - 1).to_f32();
-        let x_2d = t * horizontal_dist;
-        let y_2d = catenary_a.mul_add(((x_2d - x_offset) / catenary_a).cosh(), y_offset);
-
-        // `y_2d` encodes two things: the linear height change between endpoints
-        // and the catenary sag. We need them mapped with opposite signs:
-        //   - linear part: along gravity (preserves endpoint positions)
-        //   - sag part: against gravity (cable hangs downward)
-        let y_linear = t * y_2d_end;
-        let y_sag = y_2d - y_linear;
-        let point = start + x_2d * horizontal_axis + (y_linear - y_sag) * gravity_norm;
-        points.push(point);
-    }
+            // `y_2d` encodes two things: the linear height change between endpoints
+            // and the catenary sag. We need them mapped with opposite signs:
+            //   - linear part: along gravity (preserves endpoint positions)
+            //   - sag part: against gravity (cable hangs downward)
+            let y_linear = t * y_2d_end;
+            let y_sag = y_2d - y_linear;
+            start + x_2d * horizontal_axis + (y_linear - y_sag) * gravity_norm
+        })
+        .collect();
 
     CableSegment::from_points(points)
 }
@@ -233,17 +232,18 @@ fn sample_vertical_hang(
     // Vertical cable with slack forms a U-shape hanging down then back up
     // Midpoint hangs down by excess/2
     let midpoint = (start + end) / 2.0 + gravity_norm * (excess / 2.0);
-    let mut points = Vec::with_capacity(n);
     let half_n = n / 2;
 
-    for i in 0..half_n {
-        let t = i.to_f32() / half_n.to_f32();
-        points.push(start.lerp(midpoint, t));
-    }
-    for i in 0..(n - half_n) {
-        let t = i.to_f32() / (n - half_n - 1).max(1).to_f32();
-        points.push(midpoint.lerp(end, t));
-    }
+    let points: Vec<Vec3> = (0..half_n)
+        .map(|i| {
+            let t = i.to_f32() / half_n.to_f32();
+            start.lerp(midpoint, t)
+        })
+        .chain((0..(n - half_n)).map(|i| {
+            let t = i.to_f32() / (n - half_n - 1).max(1).to_f32();
+            midpoint.lerp(end, t)
+        }))
+        .collect();
 
     CableSegment::from_points(points)
 }
@@ -261,13 +261,14 @@ fn sample_parabolic_fallback(
     let chord_length = chord.length();
     let sag = chord_length * (slack - 1.0).max(0.0) * 0.5;
 
-    let mut points = Vec::with_capacity(n);
-    for i in 0..n {
-        let t = i.to_f32() / (n - 1).to_f32();
-        let base = start + t * chord;
-        let droop = 4.0 * sag * t * (1.0 - t);
-        points.push(base + droop * gravity_norm);
-    }
+    let points: Vec<Vec3> = (0..n)
+        .map(|i| {
+            let t = i.to_f32() / (n - 1).to_f32();
+            let base = start + t * chord;
+            let droop = 4.0 * sag * t * (1.0 - t);
+            base + droop * gravity_norm
+        })
+        .collect();
 
     CableSegment::from_points(points)
 }

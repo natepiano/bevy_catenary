@@ -95,13 +95,13 @@ impl Obstacle {
 
 /// Check if a point is inside any obstacle's AABB, expanded by `margin`.
 #[must_use]
-pub fn is_point_in_any_obstacle(pos: Position, obstacles: &[Obstacle], margin: f32) -> bool {
+pub(super) fn is_point_in_any_obstacle(pos: Position, obstacles: &[Obstacle], margin: f32) -> bool {
     obstacles.iter().any(|obs| obs.contains_point(pos, margin))
 }
 
 /// Check if any obstacle intersects a line segment by sampling `steps` evenly-spaced points.
 #[must_use]
-pub fn is_segment_blocked(
+pub(super) fn is_segment_blocked(
     start: Position,
     end: Position,
     obstacles: &[Obstacle],
@@ -162,30 +162,30 @@ impl CableSegment {
         }
 
         let n = points.len();
-        let mut tangents = Vec::with_capacity(n);
-        let mut arc_lengths = Vec::with_capacity(n);
+
+        let tangents: Vec<Vec3> = points
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                if n == 1 {
+                    Vec3::Y
+                } else if i == 0 {
+                    (points[1] - points[0]).normalize_or_zero()
+                } else if i == n - 1 {
+                    (points[n - 1] - points[n - 2]).normalize_or_zero()
+                } else {
+                    (points[i + 1] - points[i - 1]).normalize_or_zero()
+                }
+            })
+            .collect();
+
         let mut cumulative = 0.0_f32;
-
-        arc_lengths.push(0.0);
-
-        for (i, point) in points.iter().enumerate() {
-            // Compute tangent via finite differences
-            let tangent = if n == 1 {
-                Vec3::Y
-            } else if i == 0 {
-                (points[1] - points[0]).normalize_or_zero()
-            } else if i == n - 1 {
-                (points[n - 1] - points[n - 2]).normalize_or_zero()
-            } else {
-                (points[i + 1] - points[i - 1]).normalize_or_zero()
-            };
-            tangents.push(tangent);
-
-            if i > 0 {
-                cumulative += point.distance(points[i - 1]);
-                arc_lengths.push(cumulative);
-            }
-        }
+        let arc_lengths: Vec<f32> = std::iter::once(0.0)
+            .chain(points.windows(2).map(|pair| {
+                cumulative += pair[0].distance(pair[1]);
+                cumulative
+            }))
+            .collect();
 
         Self {
             points,
@@ -201,11 +201,12 @@ impl CableSegment {
         let n = n.max(2);
         let start = *start;
         let end = *end;
-        let mut points = Vec::with_capacity(n);
-        for i in 0..n {
-            let t = i.to_f32() / (n - 1).to_f32();
-            points.push(start.lerp(end, t));
-        }
+        let points: Vec<Vec3> = (0..n)
+            .map(|i| {
+                let t = i.to_f32() / (n - 1).to_f32();
+                start.lerp(end, t)
+            })
+            .collect();
         Self::from_points(points)
     }
 }

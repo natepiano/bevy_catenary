@@ -120,22 +120,14 @@ impl AStarPlanner {
 
     /// 26-connected neighbors (all adjacent cells including diagonals).
     fn neighbors(cell: Cell) -> impl Iterator<Item = Cell> {
-        let mut results = Vec::with_capacity(26);
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                for dz in -1..=1 {
-                    if dx == 0 && dy == 0 && dz == 0 {
-                        continue;
-                    }
-                    results.push(Cell {
-                        x: cell.x + dx,
-                        y: cell.y + dy,
-                        z: cell.z + dz,
-                    });
-                }
-            }
-        }
-        results.into_iter()
+        (-1..=1)
+            .flat_map(|dx| (-1..=1).flat_map(move |dy| (-1..=1).map(move |dz| (dx, dy, dz))))
+            .filter(|&(dx, dy, dz)| dx != 0 || dy != 0 || dz != 0)
+            .map(move |(dx, dy, dz)| Cell {
+                x: cell.x + dx,
+                y: cell.y + dy,
+                z: cell.z + dz,
+            })
     }
 
     /// Euclidean distance between two cells (heuristic).

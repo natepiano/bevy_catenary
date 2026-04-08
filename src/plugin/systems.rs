@@ -47,7 +47,7 @@ type CableMeshQuery<'w> = (
 /// - `Cable` component changes (solver, obstacles, resolution)
 /// - `CableEndpoint` component changes (offset, cap style)
 /// - Attached target entity's `GlobalTransform` changes
-pub fn compute_cable_routes(
+pub(super) fn compute_cable_routes(
     mut commands: Commands,
     cables: Query<(Entity, Ref<Cable>, &Children)>,
     endpoints: Query<(Ref<CableEndpoint>, Option<&AttachedTo>)>,
@@ -69,11 +69,11 @@ pub fn compute_cable_routes(
             }
 
             let pos = if let Some(attached) = attached_to {
-                if let Ok(target_tf) = transforms.get(attached.0) {
+                if let Ok(target_transform) = transforms.get(attached.0) {
                     if changed_transforms.get(attached.0).is_ok() {
                         needs_update = true;
                     }
-                    target_tf.transform_point(endpoint.offset)
+                    target_transform.transform_point(endpoint.offset)
                 } else {
                     // Target despawned — fall back to raw offset
                     endpoint.offset
@@ -118,7 +118,7 @@ pub fn compute_cable_routes(
 }
 
 /// Renders cable geometry as gizmo lines (only when debug is enabled).
-pub fn render_cable_gizmos(
+pub(super) fn render_cable_gizmos(
     cables: Query<&ComputedCableGeometry>,
     mut gizmos: Gizmos<CableGizmoGroup>,
     debug_enabled: Res<DebugGizmos>,
@@ -143,14 +143,14 @@ pub fn render_cable_gizmos(
         }
 
         // Draw waypoints as small crosses
-        for &wp in &geometry.waypoints {
-            draw_dot(&mut gizmos, wp, WAYPOINT_DOT_SIZE, WAYPOINT_DOT_COLOR);
+        for &waypoint in &geometry.waypoints {
+            draw_dot(&mut gizmos, waypoint, WAYPOINT_DOT_SIZE, WAYPOINT_DOT_COLOR);
         }
     }
 }
 
 /// Renders detailed debug info: tangent vectors and segment boundaries.
-pub fn render_debug_gizmos(
+pub(super) fn render_debug_gizmos(
     cables: Query<&ComputedCableGeometry>,
     mut gizmos: Gizmos<CableGizmoGroup>,
     debug_enabled: Res<DebugGizmos>,
@@ -220,7 +220,7 @@ pub enum DebugGizmos {
 /// On first insert: creates a `Mesh` asset, spawns a mesh child entity, stores
 /// `CableMeshHandle` and `CableMeshChild` on the cable.
 /// On subsequent inserts: mutates the existing mesh asset in place (no entity churn).
-pub fn on_geometry_computed(
+pub(super) fn on_geometry_computed(
     trigger: On<Insert, ComputedCableGeometry>,
     cables: Query<CableMeshQuery>,
     endpoints: Query<&CableEndpoint>,
@@ -244,10 +244,10 @@ pub fn on_geometry_computed(
     let mut cap_start = config.cap_start.clone();
     let mut cap_end = config.cap_end.clone();
     for child in children.iter() {
-        if let Ok(ep) = endpoints.get(child) {
-            match ep.end {
-                CableEnd::Start => cap_start = ep.cap_style.clone(),
-                CableEnd::End => cap_end = ep.cap_style.clone(),
+        if let Ok(endpoint) = endpoints.get(child) {
+            match endpoint.end {
+                CableEnd::Start => cap_start = endpoint.cap_style.clone(),
+                CableEnd::End => cap_end = endpoint.cap_style.clone(),
             }
         }
     }
@@ -283,7 +283,7 @@ pub fn on_geometry_computed(
 /// Bevy auto-removes `AttachedTo` when the target entity is despawned, which
 /// triggers `OnRemove<AttachedTo>`. This observer reads the endpoint's
 /// [`DetachPolicy`] and acts accordingly.
-pub fn on_endpoint_detached(
+pub(super) fn on_endpoint_detached(
     trigger: On<Remove, AttachedTo>,
     mut endpoints: Query<(&mut CableEndpoint, &ChildOf)>,
     mut commands: Commands,

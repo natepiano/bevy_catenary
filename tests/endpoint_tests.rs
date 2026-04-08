@@ -17,6 +17,7 @@ use bevy_catenary::CableEndpoint;
 use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::ComputedCableGeometry;
+use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::DetachPolicy;
 use bevy_catenary::Solver;
 
@@ -25,7 +26,7 @@ fn spawn_world_cable(app: &mut App, start: Vec3, end: Vec3) -> Entity {
     let cable = app
         .world_mut()
         .spawn(Cable {
-            solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             obstacles:  vec![],
             resolution: 0,
         })
@@ -97,7 +98,7 @@ fn entity_attached_cable_follows_target() {
     let cable = app
         .world_mut()
         .spawn(Cable {
-            solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             obstacles:  vec![],
             resolution: 0,
         })
@@ -152,7 +153,7 @@ fn zero_length_cable_does_not_panic() {
     let cable = app
         .world_mut()
         .spawn(Cable {
-            solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             obstacles:  vec![],
             resolution: 0,
         })
@@ -191,7 +192,7 @@ fn missing_target_does_not_panic() {
     let cable = app
         .world_mut()
         .spawn(Cable {
-            solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             obstacles:  vec![],
             resolution: 0,
         })
@@ -232,7 +233,7 @@ fn detach_policy_despawn_removes_cable() {
     let cable = app
         .world_mut()
         .spawn(Cable {
-            solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             obstacles:  vec![],
             resolution: 0,
         })
@@ -280,7 +281,7 @@ fn detach_policy_hang_in_place_keeps_cable() {
     let cable = app
         .world_mut()
         .spawn(Cable {
-            solver:     Solver::Catenary(CatenarySolver::new().with_slack(1.2)),
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             obstacles:  vec![],
             resolution: 0,
         })
