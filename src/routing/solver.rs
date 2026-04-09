@@ -45,7 +45,8 @@ pub trait CurveSolver: Send + Sync {
 pub struct DirectPlanner;
 
 impl PathPlanner for DirectPlanner {
-    fn plan(&self, start: Position, end: Position, _obstacles: &[Obstacle]) -> Vec<Vec3> {
+    fn plan(&self, start: Position, end: Position, obstacles: &[Obstacle]) -> Vec<Vec3> {
+        let _ = obstacles;
         vec![*start, *end]
     }
 }

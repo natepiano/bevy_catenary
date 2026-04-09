@@ -43,7 +43,12 @@ impl Default for OrthogonalPlanner {
 impl OrthogonalPlanner {
     /// Create an orthogonal planner with default settings.
     #[must_use]
-    pub fn new() -> Self { Self::default() }
+    pub const fn new() -> Self {
+        Self {
+            margin:   DEFAULT_OBSTACLE_MARGIN,
+            priority: RoutingPriority::HorizontalFirst,
+        }
+    }
 
     /// Set the obstacle clearance margin.
     #[must_use]

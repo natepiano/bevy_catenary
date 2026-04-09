@@ -300,7 +300,13 @@ impl Default for CatenarySolver {
 impl CatenarySolver {
     /// Create a catenary solver with default parameters.
     #[must_use]
-    pub fn new() -> Self { Self::default() }
+    pub const fn new() -> Self {
+        Self {
+            slack:      DEFAULT_SLACK,
+            gravity:    DEFAULT_GRAVITY,
+            resolution: DEFAULT_RESOLUTION,
+        }
+    }
 
     /// Set the slack factor.
     #[must_use]

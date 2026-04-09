@@ -668,11 +668,11 @@ fn insert_knee_rings(
     let params = ElbowParams::from_config(config);
     let rings_per_right_angle = config.elbow_rings_per_right_angle;
 
-    let mut out_pts = Vec::with_capacity(point_count * 2);
-    let mut out_arc = Vec::with_capacity(point_count * 2);
+    let mut output_points = Vec::with_capacity(point_count * 2);
+    let mut output_arc_lengths = Vec::with_capacity(point_count * 2);
 
-    out_pts.push(points[0]);
-    out_arc.push(arc_lengths[0]);
+    output_points.push(points[0]);
+    output_arc_lengths.push(arc_lengths[0]);
 
     let mut elbow_idx = 0_usize;
     let mut i = 1;
@@ -687,8 +687,8 @@ fn insert_knee_rings(
             (points[i + 1] - points[i]).normalize_or_zero()
         } else {
             // Last point — no outgoing segment, just pass through.
-            out_pts.push(points[i]);
-            out_arc.push(arc_lengths[i]);
+            output_points.push(points[i]);
+            output_arc_lengths.push(arc_lengths[i]);
             i += 1;
             continue;
         };
@@ -696,8 +696,8 @@ fn insert_knee_rings(
         let Some(meta) =
             compute_elbow_at_corner(dir_in, dir_out, points[i], config, elbow_idx, &params)
         else {
-            out_pts.push(points[i]);
-            out_arc.push(arc_lengths[i]);
+            output_points.push(points[i]);
+            output_arc_lengths.push(arc_lengths[i]);
             i += 1;
             continue;
         };
@@ -707,23 +707,23 @@ fn insert_knee_rings(
         let fillet_end = meta.p3;
 
         // Remove output points that overlap with the fillet's backward reach.
-        while out_pts.len() > 1 {
-            let last = out_pts[out_pts.len() - 1];
+        while output_points.len() > 1 {
+            let last = output_points[output_points.len() - 1];
             if (last - fillet_start).dot(dir_in) > 0.0 {
-                out_pts.pop();
-                out_arc.pop();
+                output_points.pop();
+                output_arc_lengths.pop();
             } else {
                 break;
             }
         }
 
         // Add explicit fillet_start point for precise join location.
-        let base_arc = out_arc.last().copied().unwrap_or(0.0);
-        let dist_to_fillet_start = out_pts
+        let base_arc = output_arc_lengths.last().copied().unwrap_or(0.0);
+        let dist_to_fillet_start = output_points
             .last()
             .map_or(0.0, |last| last.distance(fillet_start));
-        out_pts.push(fillet_start);
-        out_arc.push(base_arc + dist_to_fillet_start);
+        output_points.push(fillet_start);
+        output_arc_lengths.push(base_arc + dist_to_fillet_start);
 
         let p0 = meta.p0;
         let p1 = meta.p1;
@@ -736,7 +736,7 @@ fn insert_knee_rings(
             .max(3.0)
             .to_u32();
 
-        let fillet_base_arc = out_arc[out_arc.len() - 1];
+        let fillet_base_arc = output_arc_lengths[output_arc_lengths.len() - 1];
 
         // Estimate fillet length via sampled chord distances.
         let q1 = 0.125 * (p0 + 3.0 * p1 + 3.0 * p2 + p3) - 0.0625 * (3.0 * p0 + p3);
@@ -752,10 +752,10 @@ fn insert_knee_rings(
                 + 3.0 * omt * t * t * p2
                 + t * t * t * p3;
 
-            let al = fillet_base_arc + t * fillet_len;
+            let arc_length = fillet_base_arc + t * fillet_len;
 
-            out_pts.push(pos);
-            out_arc.push(al);
+            output_points.push(pos);
+            output_arc_lengths.push(arc_length);
         }
 
         // Skip forward input points that overlap with the fillet's forward reach.
@@ -772,9 +772,9 @@ fn insert_knee_rings(
     // Recompute tangents from the modified path positions.
     // This ensures tangents are consistent with actual segment directions,
     // which is critical for `compute_rmf` to produce correct frames.
-    let out_tan = recompute_tangents(&out_pts);
+    let output_tangents = recompute_tangents(&output_points);
 
-    (out_pts, out_tan, out_arc)
+    (output_points, output_tangents, output_arc_lengths)
 }
 
 /// Recompute tangents from path positions using segment directions.

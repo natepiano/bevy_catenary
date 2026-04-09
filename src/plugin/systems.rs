@@ -3,7 +3,6 @@
 use bevy::prelude::*;
 use bevy_kana::Position;
 
-use super::CableGizmoGroup;
 use super::components::AttachedTo;
 use super::components::Cable;
 use super::components::CableEnd;
@@ -22,6 +21,12 @@ use super::mesh;
 use super::mesh::CableMeshConfig;
 use crate::routing::MIN_SEGMENT_LENGTH;
 use crate::routing::RouteRequest;
+
+/// Gizmo group for cable debug wireframes.
+///
+/// Enable or disable via Bevy's `GizmoConfigStore`.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct CableGizmoGroup;
 
 /// Stores the mesh asset handle for a cable's generated tube mesh.
 /// The library manages this — users don't need to interact with it directly.

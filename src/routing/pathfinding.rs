@@ -87,7 +87,13 @@ impl Default for AStarPlanner {
 impl AStarPlanner {
     /// Create a planner with default settings.
     #[must_use]
-    pub fn new() -> Self { Self::default() }
+    pub const fn new() -> Self {
+        Self {
+            grid_size: DEFAULT_GRID_SIZE,
+            margin:    DEFAULT_OBSTACLE_MARGIN,
+            max_cells: DEFAULT_ASTAR_MAX_CELLS,
+        }
+    }
 
     /// Set the grid cell size.
     #[must_use]

@@ -40,6 +40,7 @@ use bevy_catenary::Curve;
 use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::DebugGizmos;
 use bevy_catenary::DetachPolicy;
+use bevy_catenary::FaceSides;
 use bevy_catenary::Obstacle;
 use bevy_catenary::Planner;
 use bevy_catenary::Solver;
@@ -574,7 +575,7 @@ fn setup_section_cap_styles(
             CableMeshConfig {
                 radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
                 material: Some(transparent_mat),
-                faces: bevy_catenary::FaceSides::Both,
+                faces: FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
@@ -597,7 +598,7 @@ fn setup_section_cap_styles(
             CableMeshConfig {
                 radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
                 material: Some(cable_mat.clone()),
-                faces: bevy_catenary::FaceSides::Both,
+                faces: FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
@@ -620,7 +621,7 @@ fn setup_section_cap_styles(
             CableMeshConfig {
                 radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
                 material: Some(cable_mat.clone()),
-                faces: bevy_catenary::FaceSides::Both,
+                faces: FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
@@ -891,7 +892,7 @@ fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<Standar
             CableMeshConfig {
                 radius: TUBE_RADIUS * INSIDE_VIEW_RADIUS_MULTIPLIER,
                 sides: 64,
-                faces: bevy_catenary::FaceSides::Both,
+                faces: FaceSides::Both,
                 material: Some(cable_mat.clone()),
                 ..default()
             },

@@ -26,6 +26,7 @@ pub use mesh::ElbowMetadata;
 pub use mesh::FaceSides;
 pub use mesh::compute_elbow_metadata;
 pub use mesh::generate_tube_mesh;
+pub use systems::CableGizmoGroup;
 pub use systems::CableMeshChild;
 pub use systems::CableMeshHandle;
 pub use systems::DebugGizmos;
@@ -34,12 +35,6 @@ use systems::on_endpoint_detached;
 use systems::on_geometry_computed;
 use systems::render_cable_gizmos;
 use systems::render_debug_gizmos;
-
-/// Gizmo group for cable debug wireframes.
-///
-/// Enable or disable via Bevy's `GizmoConfigStore`.
-#[derive(Default, Reflect, GizmoConfigGroup)]
-pub struct CableGizmoGroup;
 
 /// Plugin that adds cable routing support to a Bevy app.
 ///
