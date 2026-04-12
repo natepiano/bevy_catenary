@@ -57,15 +57,49 @@ use bevy_lagrange::TrackpadInput;
 use bevy_lagrange::ZoomToFit;
 
 // ============================================================================
-// Layout -7 sections spread along X
+// Cable
 // ============================================================================
 
+const OBSTACLE_HALF_EXTENTS: Vec3 = Vec3::new(0.8, 0.8, 0.8);
+const SLACK_NORMAL: f32 = 1.15;
+
+// ============================================================================
+// Camera
+// ============================================================================
+
+const NAV_DURATION_MS: u64 = 1200;
+const ZOOM_DURATION_MS: u64 = 1000;
+const ZOOM_MARGIN_MESH: f32 = 0.15;
+const ZOOM_MARGIN_NAV: f32 = 0.12;
+
+// ============================================================================
+// Colors
+// ============================================================================
+
+const CABLE_COLOR: Color = Color::srgb(0.9, 0.5, 0.1);
+const DESPAWN_GREEN: Color = Color::srgb(0.3, 0.8, 0.3);
+const DESPAWN_RED: Color = Color::srgb(0.8, 0.3, 0.3);
+const DRAGGABLE_COLOR: Color = Color::srgb(0.2, 0.7, 0.7);
+const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.4);
+const OBSTACLE_COLOR: Color = Color::srgba(0.8, 0.2, 0.2, 0.25);
+
+// ============================================================================
+// Ground
+// ============================================================================
+
+const GROUND_DEPTH: f32 = 14.0;
+const GROUND_WIDTH: f32 = 160.0;
+
+// ============================================================================
+// Layout
+// ============================================================================
+
+const DRAGGABLE_CUBE_SIZE: f32 = 0.45;
+const NODE_CUBE_SIZE: f32 = 0.3;
+const NODE_Y: f32 = 2.0;
 const SECTION_COUNT: usize = 9;
 const SECTION_SPACING: f32 = 16.0;
-const NODE_Y: f32 = 2.0;
 const SPAN_HALF_X: f32 = 3.0;
-const NODE_CUBE_SIZE: f32 = 0.3;
-const DRAGGABLE_CUBE_SIZE: f32 = 0.45;
 
 const SECTION_X: [f32; SECTION_COUNT] = [
     -4.0 * SECTION_SPACING,
@@ -91,40 +125,27 @@ const SECTION_TITLES: [&str; SECTION_COUNT] = [
     "Connector Model",
 ];
 
-// Cable
-const SLACK_NORMAL: f32 = 1.15;
-const OBSTACLE_HALF_EXTENTS: Vec3 = Vec3::new(0.8, 0.8, 0.8);
-
-// Ground
-const GROUND_WIDTH: f32 = 160.0;
-const GROUND_DEPTH: f32 = 14.0;
-
-// Camera
-const NAV_DURATION_MS: u64 = 1200;
-const ZOOM_DURATION_MS: u64 = 1000;
-const ZOOM_MARGIN_MESH: f32 = 0.15;
-const ZOOM_MARGIN_NAV: f32 = 0.12;
-
+// ============================================================================
 // Light
+// ============================================================================
+
 const DIRECTIONAL_LIGHT_ILLUMINANCE: f32 = 3000.0;
 
+// ============================================================================
 // Tube mesh
-const TUBE_RADIUS: f32 = 0.06;
-const TUBE_SIDES: u32 = 32;
+// ============================================================================
+
 const JOINT_RADIUS_MULTIPLIER: f32 = 1.5;
 const JOINT_SPHERE_SEGMENTS: u32 = 16;
+const TUBE_RADIUS: f32 = 0.06;
+const TUBE_SIDES: u32 = 32;
 
-// Colors
-const CABLE_COLOR: Color = Color::srgb(0.9, 0.5, 0.1);
-const OBSTACLE_COLOR: Color = Color::srgba(0.8, 0.2, 0.2, 0.25);
-const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.4);
-const DRAGGABLE_COLOR: Color = Color::srgb(0.2, 0.7, 0.7);
-const DESPAWN_GREEN: Color = Color::srgb(0.3, 0.8, 0.3);
-const DESPAWN_RED: Color = Color::srgb(0.8, 0.3, 0.3);
-
+// ============================================================================
 // UI
-const UI_FONT_SIZE: f32 = 14.0;
+// ============================================================================
+
 const NAV_FONT_SIZE: f32 = 16.0;
+const UI_FONT_SIZE: f32 = 14.0;
 
 // ============================================================================
 // Components and resources
@@ -177,11 +198,14 @@ struct TubeLight {
     end:   Vec3,
 }
 
-/// Tracks paused state and frozen elapsed time for tube light animation.
+/// Tracks play/pause state for tube light animation.
 #[derive(Resource, Default)]
-struct TubeLightPaused {
-    paused:    bool,
-    frozen_at: f32,
+enum LightAnimation {
+    #[default]
+    Running,
+    Paused {
+        frozen_at: f32,
+    },
 }
 
 /// Marker to exclude a cable from global +/- slack adjustment.
@@ -226,7 +250,11 @@ enum NavDirection {
 struct NavButton(NavDirection);
 
 #[derive(Default, Resource)]
-struct InspectorVisible(bool);
+enum InspectorVisibility {
+    Visible,
+    #[default]
+    Hidden,
+}
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -286,13 +314,16 @@ fn main() {
             MeshPickingPlugin,
             BrpExtrasPlugin::default(),
             CatenaryPlugin,
-            ResourceInspectorPlugin::<CableSettings>::default()
-                .run_if(|visible: Res<InspectorVisible>| visible.0),
+            ResourceInspectorPlugin::<CableSettings>::default().run_if(
+                |visible: Res<InspectorVisibility>| {
+                    matches!(*visible, InspectorVisibility::Visible)
+                },
+            ),
         ))
         .init_resource::<CableSettings>()
-        .init_resource::<InspectorVisible>()
+        .init_resource::<InspectorVisibility>()
         .init_resource::<DragState>()
-        .init_resource::<TubeLightPaused>()
+        .init_resource::<LightAnimation>()
         .insert_resource(CurrentSection(0))
         .add_systems(
             Startup,
@@ -1051,20 +1082,21 @@ fn align_connector_to_cable(
 fn animate_tube_light(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut paused: ResMut<TubeLightPaused>,
+    mut animation: ResMut<LightAnimation>,
     mut lights: Query<(&TubeLight, &mut Transform)>,
 ) {
     if keyboard.just_pressed(KeyCode::Escape) {
-        paused.paused = !paused.paused;
-        if paused.paused {
-            paused.frozen_at = time.elapsed_secs();
-        }
+        *animation = match *animation {
+            LightAnimation::Running => LightAnimation::Paused {
+                frozen_at: time.elapsed_secs(),
+            },
+            LightAnimation::Paused { .. } => LightAnimation::Running,
+        };
     }
 
-    let elapsed = if paused.paused {
-        paused.frozen_at
-    } else {
-        time.elapsed_secs()
+    let elapsed = match *animation {
+        LightAnimation::Paused { frozen_at } => frozen_at,
+        LightAnimation::Running => time.elapsed_secs(),
     };
 
     // 0.5s pause | 2s travel forward | 0.5s pause | 2s travel back = 5s cycle
@@ -1747,7 +1779,7 @@ fn handle_keyboard(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
     mut debug_enabled: ResMut<DebugGizmos>,
-    mut inspector_visible: ResMut<InspectorVisible>,
+    mut inspector_visible: ResMut<InspectorVisibility>,
     scene: Res<SceneEntities>,
     // Slack adjustment (exclude `SlackLocked` cables)
     mut cables: Query<&mut Cable, Without<SlackLocked>>,
@@ -1770,7 +1802,10 @@ fn handle_keyboard(
     }
 
     if keyboard.just_pressed(KeyCode::KeyI) {
-        inspector_visible.0 = !inspector_visible.0;
+        *inspector_visible = match *inspector_visible {
+            InspectorVisibility::Visible => InspectorVisibility::Hidden,
+            InspectorVisibility::Hidden => InspectorVisibility::Visible,
+        };
     }
 
     // F: Full scene — zoom out to see everything

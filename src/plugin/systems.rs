@@ -204,10 +204,9 @@ pub(super) fn render_debug_gizmos(
 
 /// Draw a small cross at a point (debug marker).
 fn draw_dot(gizmos: &mut Gizmos<CableGizmoGroup>, point: Vec3, size: f32, color: Color) {
-    let s = size;
-    gizmos.line(point - Vec3::X * s, point + Vec3::X * s, color);
-    gizmos.line(point - Vec3::Y * s, point + Vec3::Y * s, color);
-    gizmos.line(point - Vec3::Z * s, point + Vec3::Z * s, color);
+    gizmos.line(point - Vec3::X * size, point + Vec3::X * size, color);
+    gizmos.line(point - Vec3::Y * size, point + Vec3::Y * size, color);
+    gizmos.line(point - Vec3::Z * size, point + Vec3::Z * size, color);
 }
 
 /// Resource that toggles detailed debug visualization.
