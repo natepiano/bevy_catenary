@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use super::mesh::CableMeshConfig;
-use super::mesh::CapStyle;
+use super::mesh::Capping;
 use crate::routing::CableGeometry;
 use crate::routing::Obstacle;
 use crate::routing::Solver;
@@ -31,33 +31,33 @@ pub struct CableEndpoint {
     /// Position offset. World-space for world-attached, local-space for entity-attached.
     pub offset:        Vec3,
     /// How to cap this end of the tube mesh.
-    pub cap_style:     CapStyle,
+    pub cap_style:     Capping,
     /// What happens when the target entity is despawned.
-    pub detach_policy: DetachPolicy,
+    pub detach_policy: OnDetach,
 }
 
 impl CableEndpoint {
     /// Create a new endpoint with default cap style (`None`) and detach policy (`HangInPlace`).
     #[must_use]
-    pub fn new(end: CableEnd, offset: Vec3) -> Self {
+    pub const fn new(end: CableEnd, offset: Vec3) -> Self {
         Self {
             end,
             offset,
-            cap_style: CapStyle::default(),
-            detach_policy: DetachPolicy::default(),
+            cap_style: Capping::Round,
+            detach_policy: OnDetach::HangInPlace,
         }
     }
 
     /// Set the cap style for this endpoint.
     #[must_use]
-    pub const fn with_cap(mut self, cap_style: CapStyle) -> Self {
+    pub const fn with_cap(mut self, cap_style: Capping) -> Self {
         self.cap_style = cap_style;
         self
     }
 
     /// Set the detach policy for this endpoint.
     #[must_use]
-    pub const fn with_detach_policy(mut self, policy: DetachPolicy) -> Self {
+    pub const fn with_detach_policy(mut self, policy: OnDetach) -> Self {
         self.detach_policy = policy;
         self
     }
@@ -68,7 +68,7 @@ impl CableEndpoint {
 /// When a target entity is despawned, Bevy auto-removes the [`AttachedTo`] relationship.
 /// An `OnRemove<AttachedTo>` observer fires and reads this policy to decide behavior.
 #[derive(Clone, Debug, Default, Reflect)]
-pub enum DetachPolicy {
+pub enum OnDetach {
     /// Convert to world-attached at last resolved position. Cable keeps its shape.
     #[default]
     HangInPlace,
@@ -85,7 +85,7 @@ pub enum DetachPolicy {
 /// as a local-space offset from the target's [`GlobalTransform`]. The cable recomputes
 /// reactively when the target's transform changes.
 ///
-/// If the target entity is despawned, the endpoint's [`DetachPolicy`] determines behavior.
+/// If the target entity is despawned, the endpoint's [`OnDetach`] determines behavior.
 #[derive(Component)]
 #[relationship(relationship_target = AttachedEndpoints)]
 pub struct AttachedTo(pub Entity);

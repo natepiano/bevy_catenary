@@ -8,7 +8,7 @@ use super::components::Cable;
 use super::components::CableEnd;
 use super::components::CableEndpoint;
 use super::components::ComputedCableGeometry;
-use super::components::DetachPolicy;
+use super::components::OnDetach;
 use super::constants::CABLE_GIZMO_COLOR;
 use super::constants::SEGMENT_BOUNDARY_COLOR;
 use super::constants::SEGMENT_BOUNDARY_DOT_SIZE;
@@ -84,7 +84,7 @@ pub(super) fn compute_cable_routes(
                     endpoint.offset
                 }
             } else {
-                // World-attached — offset IS the world position
+                // World-attached — `offset` IS the world position
                 endpoint.offset
             };
 
@@ -115,7 +115,7 @@ pub(super) fn compute_cable_routes(
         };
 
         let geometry = cable.solver.solve(&request);
-        // Re-insert to trigger OnInsert<ComputedCableGeometry> for mesh generation
+        // Re-insert to trigger `OnInsert<ComputedCableGeometry>` for mesh generation
         commands.entity(entity).insert(ComputedCableGeometry {
             geometry: Some(geometry),
         });
@@ -286,7 +286,7 @@ pub(super) fn on_geometry_computed(
 ///
 /// Bevy auto-removes `AttachedTo` when the target entity is despawned, which
 /// triggers `OnRemove<AttachedTo>`. This observer reads the endpoint's
-/// [`DetachPolicy`] and acts accordingly.
+/// [`OnDetach`] and acts accordingly.
 pub(super) fn on_endpoint_detached(
     trigger: On<Remove, AttachedTo>,
     mut endpoints: Query<(&mut CableEndpoint, &ChildOf)>,
@@ -298,14 +298,14 @@ pub(super) fn on_endpoint_detached(
     };
 
     match endpoint.detach_policy {
-        DetachPolicy::HangInPlace | DetachPolicy::HangLoose => {
-            // HangLoose falls back to HangInPlace for now.
+        OnDetach::HangInPlace | OnDetach::HangLoose => {
+            // `HangLoose` falls back to `HangInPlace` for now.
             // The offset is already a world position for world-attached endpoints.
             // For entity-attached, we'd ideally store the last resolved world pos,
             // but since the target is being despawned, the offset stays as-is.
             // The cable will keep its last computed geometry.
         },
-        DetachPolicy::Despawn => {
+        OnDetach::Despawn => {
             let cable_entity = child_of.parent();
             commands.entity(cable_entity).despawn();
         },

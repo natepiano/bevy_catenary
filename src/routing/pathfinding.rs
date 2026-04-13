@@ -55,7 +55,7 @@ impl PartialOrd for OpenEntry {
 
 impl Ord for OpenEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Reverse order for min-heap (BinaryHeap is max-heap)
+        // Reverse order for min-heap (`BinaryHeap` is max-heap)
         other
             .f_score
             .partial_cmp(&self.f_score)
@@ -144,9 +144,7 @@ impl AStarPlanner {
         dz.mul_add(dz, dx.mul_add(dx, dy * dy)).sqrt()
     }
 
-    /// Run A* and return the path as grid cells.
-    ///
-    /// Run A* and return the path as grid cells.
+    /// Run `A*` and return the path as grid cells.
     fn find_path(
         &self,
         start: Cell,

@@ -18,7 +18,7 @@ use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::ComputedCableGeometry;
 use bevy_catenary::DEFAULT_SLACK;
-use bevy_catenary::DetachPolicy;
+use bevy_catenary::OnDetach;
 use bevy_catenary::Solver;
 
 /// Spawn a world-attached cable and return the cable entity.
@@ -241,7 +241,7 @@ fn detach_policy_despawn_removes_cable() {
 
     app.world_mut().spawn((
         CableEndpoint::new(CableEnd::Start, Vec3::new(0.5, 0.0, 0.0))
-            .with_detach_policy(DetachPolicy::Despawn),
+            .with_detach_policy(OnDetach::Despawn),
         AttachedTo(target),
         ChildOf(cable),
     ));
@@ -265,7 +265,7 @@ fn detach_policy_despawn_removes_cable() {
 
     assert!(
         app.world().get_entity(cable).is_err(),
-        "Cable should be despawned after target despawn with DetachPolicy::Despawn"
+        "Cable should be despawned after target despawn with OnDetach::Despawn"
     );
 }
 
@@ -307,7 +307,7 @@ fn detach_policy_hang_in_place_keeps_cable() {
     // Cable should still exist (HangInPlace is the default)
     assert!(
         app.world().get_entity(cable).is_ok(),
-        "Cable should survive target despawn with DetachPolicy::HangInPlace"
+        "Cable should survive target despawn with OnDetach::HangInPlace"
     );
 
     let computed = app.world().get::<ComputedCableGeometry>(cable).unwrap();

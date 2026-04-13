@@ -28,11 +28,11 @@ pub use constants::DEFAULT_RESOLUTION;
 pub use constants::DEFAULT_SLACK;
 pub use constants::MIN_SEGMENT_LENGTH;
 // Solver enums
-pub use enums::Curve;
-pub use enums::Planner;
+pub use enums::CurveKind;
+pub use enums::PathStrategy;
 pub use enums::Solver;
+pub use orthogonal::AxisOrder;
 pub use orthogonal::OrthogonalPlanner;
-pub use orthogonal::RoutingPriority;
 pub use pathfinding::AStarPlanner;
 // Traits
 pub use solver::CurveSolver;

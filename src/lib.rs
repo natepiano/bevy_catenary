@@ -49,23 +49,24 @@ pub use plugin::CableGizmoGroup;
 pub use plugin::CableMeshChild;
 pub use plugin::CableMeshConfig;
 pub use plugin::CableMeshHandle;
-pub use plugin::CapStyle;
+pub use plugin::Capping;
 pub use plugin::CatenaryPlugin;
 pub use plugin::ComputedCableGeometry;
 pub use plugin::DebugGizmos;
-pub use plugin::DetachPolicy;
 pub use plugin::ElbowMetadata;
 pub use plugin::FaceSides;
+pub use plugin::OnDetach;
 pub use plugin::compute_elbow_metadata;
 pub use plugin::generate_tube_mesh;
 // Solvers
 pub use routing::AStarPlanner;
 pub use routing::Anchor;
+pub use routing::AxisOrder;
 pub use routing::CableGeometry;
 pub use routing::CableSegment;
 pub use routing::CatenarySolver;
 // Solver enums
-pub use routing::Curve;
+pub use routing::CurveKind;
 // Routing traits
 pub use routing::CurveSolver;
 // Constants
@@ -77,11 +78,10 @@ pub use routing::LinearSolver;
 pub use routing::Obstacle;
 pub use routing::OrthogonalPlanner;
 pub use routing::PathPlanner;
-pub use routing::Planner;
+pub use routing::PathStrategy;
 pub use routing::RouteRequest;
 pub use routing::RouteSolver;
 pub use routing::Router;
-pub use routing::RoutingPriority;
 pub use routing::Solver;
 // Standalone catenary math
 pub use routing::evaluate;

@@ -32,17 +32,17 @@ use bevy_catenary::CableEnd;
 use bevy_catenary::CableEndpoint;
 use bevy_catenary::CableMeshChild;
 use bevy_catenary::CableMeshConfig;
-use bevy_catenary::CapStyle;
+use bevy_catenary::Capping;
 use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::ComputedCableGeometry;
-use bevy_catenary::Curve;
+use bevy_catenary::CurveKind;
 use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::DebugGizmos;
-use bevy_catenary::DetachPolicy;
 use bevy_catenary::FaceSides;
 use bevy_catenary::Obstacle;
-use bevy_catenary::Planner;
+use bevy_catenary::OnDetach;
+use bevy_catenary::PathStrategy;
 use bevy_catenary::Solver;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
@@ -82,6 +82,8 @@ const DESPAWN_RED: Color = Color::srgb(0.8, 0.3, 0.3);
 const DRAGGABLE_COLOR: Color = Color::srgb(0.2, 0.7, 0.7);
 const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.4);
 const OBSTACLE_COLOR: Color = Color::srgba(0.8, 0.2, 0.2, 0.25);
+const POINT_LIGHT_COLOR: Color = Color::srgb(1.0, 0.95, 0.8);
+const TRANSPARENT_TUBE_COLOR: Color = Color::srgba(0.85, 0.55, 0.2, 0.2);
 
 // ============================================================================
 // Ground
@@ -94,9 +96,14 @@ const GROUND_WIDTH: f32 = 160.0;
 // Layout
 // ============================================================================
 
+const CAP_STYLE_TUBE_OFFSET: f32 = 0.8;
+const CAP_STYLE_TUBE_SPACING: f32 = 2.0;
 const DRAGGABLE_CUBE_SIZE: f32 = 0.45;
+const HUB_SPHERE_RADIUS: f32 = 0.35;
 const NODE_CUBE_SIZE: f32 = 0.3;
 const NODE_Y: f32 = 2.0;
+const RAY_EPSILON: f32 = 1e-6;
+const SLACK_ADJUSTMENT_STEP: f32 = 0.01;
 const SECTION_COUNT: usize = 9;
 const SECTION_SPACING: f32 = 16.0;
 const SPAN_HALF_X: f32 = 3.0;
@@ -130,6 +137,8 @@ const SECTION_TITLES: [&str; SECTION_COUNT] = [
 // ============================================================================
 
 const DIRECTIONAL_LIGHT_ILLUMINANCE: f32 = 3000.0;
+const POINT_LIGHT_INTENSITY: f32 = 20000.0;
+const POINT_LIGHT_RANGE: f32 = 2.0;
 
 // ============================================================================
 // Tube mesh
@@ -213,7 +222,7 @@ enum LightAnimation {
 struct SlackLocked;
 
 /// How a connector model aligns to the cable tangent.
-enum ConnectorAlignment {
+enum Alignment {
     /// Maintains a consistent up direction — no roll as the cable sweeps around.
     Fixed,
     /// Follows the cable's rotation-minimizing frame — rolls with the cable's twist.
@@ -225,7 +234,7 @@ enum ConnectorAlignment {
 struct ConnectorEnd {
     cable:     Entity,
     end:       CableEnd,
-    alignment: ConnectorAlignment,
+    alignment: Alignment,
 }
 
 /// Marker for cables with a radius multiplier relative to the inspector setting.
@@ -588,14 +597,18 @@ fn setup_section_cap_styles(
 
     // Transparent material for the left tube (Round/Round) — 80% transparent
     let transparent_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.85, 0.55, 0.2, 0.2),
+        base_color: TRANSPARENT_TUBE_COLOR,
         alpha_mode: AlphaMode::Blend,
         ..default()
     });
 
     // Left: Round/Round — transparent, both sides, light inside shines through
-    let left_start = Vec3::new(cx - 4.0, NODE_Y, -0.8);
-    let left_end = Vec3::new(cx - 2.0, NODE_Y, 0.8);
+    let left_start = Vec3::new(
+        2.0f32.mul_add(-CAP_STYLE_TUBE_SPACING, cx),
+        NODE_Y,
+        -CAP_STYLE_TUBE_OFFSET,
+    );
+    let left_end = Vec3::new(cx - CAP_STYLE_TUBE_SPACING, NODE_Y, CAP_STYLE_TUBE_OFFSET);
     commands
         .spawn((
             Cable {
@@ -612,13 +625,21 @@ fn setup_section_cap_styles(
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
         ))
         .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, left_start).with_cap(CapStyle::Round));
-            parent.spawn(CableEndpoint::new(CableEnd::End, left_end).with_cap(CapStyle::Round));
+            parent.spawn(CableEndpoint::new(CableEnd::Start, left_start).with_cap(Capping::Round));
+            parent.spawn(CableEndpoint::new(CableEnd::End, left_end).with_cap(Capping::Round));
         });
 
     // Middle: Round/Flat — open back (None on start) so we can see the flat cap lit from inside
-    let mid_start = Vec3::new(cx - 1.0, NODE_Y, -0.8);
-    let mid_end = Vec3::new(cx + 1.0, NODE_Y, 0.8);
+    let mid_start = Vec3::new(
+        cx - CAP_STYLE_TUBE_SPACING / 2.0,
+        NODE_Y,
+        -CAP_STYLE_TUBE_OFFSET,
+    );
+    let mid_end = Vec3::new(
+        cx + CAP_STYLE_TUBE_SPACING / 2.0,
+        NODE_Y,
+        CAP_STYLE_TUBE_OFFSET,
+    );
     commands
         .spawn((
             Cable {
@@ -635,13 +656,17 @@ fn setup_section_cap_styles(
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
         ))
         .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, mid_start).with_cap(CapStyle::None));
-            parent.spawn(CableEndpoint::new(CableEnd::End, mid_end).with_cap(CapStyle::flat()));
+            parent.spawn(CableEndpoint::new(CableEnd::Start, mid_start).with_cap(Capping::None));
+            parent.spawn(CableEndpoint::new(CableEnd::End, mid_end).with_cap(Capping::flat()));
         });
 
     // Right: Round/None — open front, round cap at back
-    let right_start = Vec3::new(cx + 2.0, NODE_Y, -0.8);
-    let right_end = Vec3::new(cx + 4.0, NODE_Y, 0.8);
+    let right_start = Vec3::new(cx + CAP_STYLE_TUBE_SPACING, NODE_Y, -CAP_STYLE_TUBE_OFFSET);
+    let right_end = Vec3::new(
+        2.0f32.mul_add(CAP_STYLE_TUBE_SPACING, cx),
+        NODE_Y,
+        CAP_STYLE_TUBE_OFFSET,
+    );
     commands
         .spawn((
             Cable {
@@ -658,9 +683,8 @@ fn setup_section_cap_styles(
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
         ))
         .with_children(|parent| {
-            parent
-                .spawn(CableEndpoint::new(CableEnd::Start, right_start).with_cap(CapStyle::Round));
-            parent.spawn(CableEndpoint::new(CableEnd::End, right_end).with_cap(CapStyle::None));
+            parent.spawn(CableEndpoint::new(CableEnd::Start, right_start).with_cap(Capping::Round));
+            parent.spawn(CableEndpoint::new(CableEnd::End, right_end).with_cap(Capping::None));
         });
 
     // Animated point lights inside each tube, staggered start positions.
@@ -673,9 +697,9 @@ fn setup_section_cap_styles(
     for (start, end, initial_t) in tubes {
         commands.spawn((
             PointLight {
-                color: Color::srgb(1.0, 0.95, 0.8),
-                intensity: 20000.0,
-                range: 2.0,
+                color: POINT_LIGHT_COLOR,
+                intensity: POINT_LIGHT_INTENSITY,
+                range: POINT_LIGHT_RANGE,
                 shadows_enabled: false,
                 ..default()
             },
@@ -723,8 +747,8 @@ fn setup_section_solver_comparison(
         start,
         end,
         Solver::Routed {
-            planner:    Planner::Orthogonal,
-            curve:      Curve::Linear,
+            planner:    PathStrategy::Orthogonal,
+            curve:      CurveKind::Linear,
             resolution: 0,
         },
         vec![],
@@ -806,7 +830,7 @@ fn setup_section_shared_hub(
     cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[4];
-    let drag_mesh = meshes.add(Sphere::new(0.35).mesh().uv(32, 32));
+    let drag_mesh = meshes.add(Sphere::new(HUB_SPHERE_RADIUS).mesh().uv(32, 32));
     let drag_mat = materials.add(StandardMaterial {
         base_color: DRAGGABLE_COLOR,
         ..default()
@@ -874,8 +898,8 @@ fn setup_section_astar(
         start,
         end,
         Solver::Routed {
-            planner:    Planner::AStar,
-            curve:      Curve::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
+            planner:    PathStrategy::AStar,
+            curve:      CurveKind::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
             resolution: 0,
         },
         vec![obstacle],
@@ -930,8 +954,8 @@ fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<Standar
             RadiusMultiplier(INSIDE_VIEW_RADIUS_MULTIPLIER),
         ))
         .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(CapStyle::None));
-            parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(CapStyle::None));
+            parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(Capping::None));
+            parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(Capping::None));
         });
 }
 
@@ -965,12 +989,12 @@ fn setup_section_connector(
         (
             Vec3::new(cx - SPAN_HALF_X, NODE_Y, 1.5),
             Vec3::new(cx + SPAN_HALF_X, NODE_Y, 1.5),
-            ConnectorAlignment::Fixed,
+            Alignment::Fixed,
         ),
         (
             Vec3::new(cx - SPAN_HALF_X, NODE_Y, -1.5),
             Vec3::new(cx + SPAN_HALF_X, NODE_Y, -1.5),
-            ConnectorAlignment::Rotating,
+            Alignment::Rotating,
         ),
     ];
 
@@ -1006,7 +1030,7 @@ fn setup_section_connector(
         commands.entity(cable).with_children(|parent| {
             parent.spawn(CableEndpoint::new(CableEnd::Start, start));
             parent.spawn((
-                CableEndpoint::new(CableEnd::End, Vec3::ZERO).with_cap(CapStyle::None),
+                CableEndpoint::new(CableEnd::End, Vec3::ZERO).with_cap(Capping::None),
                 AttachedTo(plug),
             ));
         });
@@ -1053,7 +1077,7 @@ fn align_connector_to_cable(
         // so the cable exit faces back into the cable and the prongs face outward.
         let direction = -tangent;
         let new_rotation = match connector.alignment {
-            ConnectorAlignment::Fixed => {
+            Alignment::Fixed => {
                 // Constrain up to world Y — no roll as cable sweeps around.
                 // `looking_to` orients -Z toward `direction`, so we rotate the
                 // result to map our model's +Y to that direction instead.
@@ -1061,7 +1085,7 @@ fn align_connector_to_cable(
                 // Remap: model +Y → look -Z. That's a 90° rotation around X.
                 look.rotation * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
             },
-            ConnectorAlignment::Rotating => {
+            Alignment::Rotating => {
                 // Unconstrained rotation — follows the cable's natural twist.
                 Quat::from_rotation_arc(Vec3::Y, direction)
             },
@@ -1128,7 +1152,7 @@ fn spawn_detach_demo(
     cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[6];
-    let sphere_mesh = meshes.add(Sphere::new(0.35).mesh().uv(16, 16));
+    let sphere_mesh = meshes.add(Sphere::new(HUB_SPHERE_RADIUS).mesh().uv(16, 16));
 
     // Top: HangInPlace (green sphere)
     let green_mat = materials.add(StandardMaterial {
@@ -1205,7 +1229,7 @@ fn spawn_detach_demo(
         .with_children(|parent| {
             parent.spawn((
                 CableEndpoint::new(CableEnd::Start, Vec3::ZERO)
-                    .with_detach_policy(DetachPolicy::Despawn),
+                    .with_detach_policy(OnDetach::Despawn),
                 AttachedTo(red_sphere),
             ));
             parent.spawn(CableEndpoint::new(CableEnd::End, anchor_pos));
@@ -1598,7 +1622,7 @@ fn cursor_ray_y_plane(
     let cursor = window.cursor_position()?;
     let ray = camera.viewport_to_world(cam_tf, cursor).ok()?;
     let denom = ray.direction.y;
-    if denom.abs() < 1e-6 {
+    if denom.abs() < RAY_EPSILON {
         return None;
     }
     let t = (y_height - ray.origin.y) / denom;
@@ -1820,9 +1844,9 @@ fn handle_keyboard(
 
     // +/-: Adjust catenary slack
     let slack_delta = if keyboard.pressed(KeyCode::Equal) {
-        0.01
+        SLACK_ADJUSTMENT_STEP
     } else if keyboard.pressed(KeyCode::Minus) {
-        -0.01
+        -SLACK_ADJUSTMENT_STEP
     } else {
         0.0
     };
@@ -1831,7 +1855,7 @@ fn handle_keyboard(
             match &mut cable.solver {
                 Solver::Catenary(catenary)
                 | Solver::Routed {
-                    curve: Curve::Catenary(catenary),
+                    curve: CurveKind::Catenary(catenary),
                     ..
                 } => {
                     catenary.slack = (catenary.slack + slack_delta).max(1.0);

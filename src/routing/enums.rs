@@ -31,9 +31,9 @@ pub enum Solver {
     /// Path planner + curve solver composition.
     Routed {
         /// How to find waypoints around obstacles.
-        planner:    Planner,
+        planner:    PathStrategy,
         /// How to generate curves between waypoints.
-        curve:      Curve,
+        curve:      CurveKind,
         /// Sample resolution per segment (0 = use solver default).
         resolution: u32,
     },
@@ -41,7 +41,7 @@ pub enum Solver {
 
 /// Path planning strategy (finds waypoints around obstacles).
 #[derive(Clone, Debug, Reflect)]
-pub enum Planner {
+pub enum PathStrategy {
     /// No obstacle avoidance — direct path.
     Direct,
     /// Orthogonal (right-angle) routing.
@@ -52,7 +52,7 @@ pub enum Planner {
 
 /// Curve generation strategy (fills between waypoints).
 #[derive(Clone, Debug, Reflect)]
-pub enum Curve {
+pub enum CurveKind {
     /// Catenary (hanging cable) curve.
     Catenary(CatenarySolver),
     /// Straight line segment.
@@ -90,7 +90,7 @@ impl Solver {
     }
 }
 
-impl Planner {
+impl PathStrategy {
     /// Find waypoints from `start` to `end`, routing around `obstacles`.
     fn plan(&self, start: Position, end: Position, obstacles: &[Obstacle]) -> Vec<Vec3> {
         match self {
@@ -101,7 +101,7 @@ impl Planner {
     }
 }
 
-impl Curve {
+impl CurveKind {
     /// Generate a curve segment between two waypoints.
     fn solve_segment(&self, start: Position, end: Position, resolution: u32) -> CableSegment {
         match self {

@@ -99,10 +99,10 @@ fn resolve_elbow_arms(
 
 /// How to cap each end of a tube mesh.
 ///
-/// Surface normal is only relevant for [`CapStyle::Flat`] caps and is encoded directly
-/// in the variant — invalid states (normal on a [`CapStyle::Round`] cap) are unrepresentable.
+/// Surface normal is only relevant for [`Capping::Flat`] caps and is encoded directly
+/// in the variant — invalid states (normal on a [`Capping::Round`] cap) are unrepresentable.
 #[derive(Clone, Debug, Default, Reflect)]
-pub enum CapStyle {
+pub enum Capping {
     /// Open end — no cap geometry. Used internally for shared hub junctions.
     None,
     /// Hemisphere cap (smooth rounded end).
@@ -116,7 +116,7 @@ pub enum CapStyle {
     },
 }
 
-impl CapStyle {
+impl Capping {
     /// Flat cap using the cable's tangent direction.
     #[must_use]
     pub const fn flat() -> Self { Self::Flat { normal: None } }
@@ -161,9 +161,9 @@ pub struct CableMeshConfig {
     /// Number of vertices around the cross-section circle.
     pub sides:                        u32,
     /// Cap style for the start end of the tube.
-    pub cap_start:                    CapStyle,
+    pub cap_start:                    Capping,
     /// Cap style for the end of the tube.
-    pub cap_end:                      CapStyle,
+    pub cap_end:                      Capping,
     /// Distance to trim from the start (tube begins this far along the path).
     pub trim_start:                   f32,
     /// Distance to trim from the end (tube ends this far before the path end).
@@ -194,8 +194,8 @@ impl Default for CableMeshConfig {
         Self {
             radius:                       DEFAULT_TUBE_RADIUS,
             sides:                        DEFAULT_TUBE_SIDES,
-            cap_start:                    CapStyle::Round,
-            cap_end:                      CapStyle::Round,
+            cap_start:                    Capping::Round,
+            cap_end:                      Capping::Round,
             trim_start:                   0.0,
             trim_end:                     0.0,
             elbow_bend_radius_multiplier: DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER,
@@ -317,14 +317,14 @@ struct CapContext<'a> {
 }
 
 /// Dispatch a single cap (start or end) based on style, generating outside and/or inside faces.
-fn add_single_cap(style: &CapStyle, context: &CapContext, buffers: &mut MeshBuffers) {
+fn add_single_cap(style: &Capping, context: &CapContext, buffers: &mut MeshBuffers) {
     let needs_outside = matches!(context.faces, FaceSides::Outside | FaceSides::Both);
     let needs_inside = matches!(context.faces, FaceSides::Inside | FaceSides::Both);
 
     let cap_rings = context.sides.max(MIN_CAP_RINGS);
 
     match style {
-        CapStyle::Round => {
+        Capping::Round => {
             for &cap_side in &[CapSide::Outside, CapSide::Inside] {
                 let needed = match cap_side {
                     CapSide::Outside => needs_outside,
@@ -335,7 +335,7 @@ fn add_single_cap(style: &CapStyle, context: &CapContext, buffers: &mut MeshBuff
                 }
             }
         },
-        CapStyle::Flat { normal } => {
+        Capping::Flat { normal } => {
             let flat_context = CapContext {
                 direction: normal.unwrap_or(context.direction),
                 ..*context
@@ -350,7 +350,7 @@ fn add_single_cap(style: &CapStyle, context: &CapContext, buffers: &mut MeshBuff
                 }
             }
         },
-        CapStyle::None => {},
+        Capping::None => {},
     }
 }
 
@@ -835,7 +835,7 @@ pub struct ElbowMetadata {
 struct ElbowParams {
     angle_threshold_cos: f32,
     bend_radius:         f32,
-    min_bend_r:          f32,
+    min_bend_radius:     f32,
 }
 
 impl ElbowParams {
@@ -844,7 +844,7 @@ impl ElbowParams {
         Self {
             angle_threshold_cos: (config.elbow_angle_threshold_deg.to_radians()).cos(),
             bend_radius:         tube_radius * config.elbow_bend_radius_multiplier,
-            min_bend_r:          tube_radius * config.elbow_min_radius_multiplier,
+            min_bend_radius:     tube_radius * config.elbow_min_radius_multiplier,
         }
     }
 }
@@ -866,7 +866,7 @@ fn compute_elbow_at_corner(
         return None;
     }
 
-    if params.bend_radius < params.min_bend_r {
+    if params.bend_radius < params.min_bend_radius {
         return None;
     }
 

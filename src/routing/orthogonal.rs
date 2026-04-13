@@ -11,7 +11,7 @@ use super::types::Obstacle;
 
 /// Whether to route vertically or horizontally first.
 #[derive(Clone, Debug, Default)]
-pub enum RoutingPriority {
+pub enum AxisOrder {
     /// Route horizontally (X/Z) before vertically (Y).
     #[default]
     HorizontalFirst,
@@ -28,14 +28,14 @@ pub struct OrthogonalPlanner {
     /// Clearance around obstacles.
     pub margin:   f32,
     /// Axis routing priority.
-    pub priority: RoutingPriority,
+    pub priority: AxisOrder,
 }
 
 impl Default for OrthogonalPlanner {
     fn default() -> Self {
         Self {
             margin:   DEFAULT_OBSTACLE_MARGIN,
-            priority: RoutingPriority::default(),
+            priority: AxisOrder::default(),
         }
     }
 }
@@ -46,7 +46,7 @@ impl OrthogonalPlanner {
     pub const fn new() -> Self {
         Self {
             margin:   DEFAULT_OBSTACLE_MARGIN,
-            priority: RoutingPriority::HorizontalFirst,
+            priority: AxisOrder::HorizontalFirst,
         }
     }
 
@@ -60,7 +60,7 @@ impl OrthogonalPlanner {
     /// Prefer vertical-first routing.
     #[must_use]
     pub const fn vertical_first(mut self) -> Self {
-        self.priority = RoutingPriority::VerticalFirst;
+        self.priority = AxisOrder::VerticalFirst;
         self
     }
 
@@ -132,7 +132,7 @@ impl PathPlanner for OrthogonalPlanner {
         let start = *start;
         let end = *end;
         // Axis orders to try: preferred first, then alternatives
-        let orders: &[&[usize]] = if matches!(self.priority, RoutingPriority::VerticalFirst) {
+        let orders: &[&[usize]] = if matches!(self.priority, AxisOrder::VerticalFirst) {
             &[
                 &[1, 0, 2], // Y, X, Z
                 &[0, 1, 2], // X, Y, Z
