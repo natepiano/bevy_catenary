@@ -588,6 +588,35 @@ fn setup_section_catenary(
 /// The near end (facing the camera) varies to show that each end's cap is freely choosable.
 const CAP_STYLE_RADIUS_MULTIPLIER: f32 = 5.0;
 
+fn spawn_cap_style_tube(
+    commands: &mut Commands,
+    material: Handle<StandardMaterial>,
+    start: Vec3,
+    end: Vec3,
+    start_cap: Capping,
+    end_cap: Capping,
+) {
+    commands
+        .spawn((
+            Cable {
+                solver:     Solver::Linear,
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            CableMeshConfig {
+                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                material: Some(material),
+                faces: FaceSides::Both,
+                ..default()
+            },
+            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
+        ))
+        .with_children(|parent| {
+            parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(start_cap));
+            parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(end_cap));
+        });
+}
+
 fn setup_section_cap_styles(
     commands: &mut Commands,
     materials: &mut Assets<StandardMaterial>,
@@ -609,25 +638,14 @@ fn setup_section_cap_styles(
         -CAP_STYLE_TUBE_OFFSET,
     );
     let left_end = Vec3::new(cx - CAP_STYLE_TUBE_SPACING, NODE_Y, CAP_STYLE_TUBE_OFFSET);
-    commands
-        .spawn((
-            Cable {
-                solver:     Solver::Linear,
-                obstacles:  vec![],
-                resolution: 0,
-            },
-            CableMeshConfig {
-                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
-                material: Some(transparent_mat),
-                faces: FaceSides::Both,
-                ..default()
-            },
-            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
-        ))
-        .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, left_start).with_cap(Capping::Round));
-            parent.spawn(CableEndpoint::new(CableEnd::End, left_end).with_cap(Capping::Round));
-        });
+    spawn_cap_style_tube(
+        commands,
+        transparent_mat,
+        left_start,
+        left_end,
+        Capping::Round,
+        Capping::Round,
+    );
 
     // Middle: Round/Flat — open back (None on start) so we can see the flat cap lit from inside
     let mid_start = Vec3::new(
@@ -640,25 +658,14 @@ fn setup_section_cap_styles(
         NODE_Y,
         CAP_STYLE_TUBE_OFFSET,
     );
-    commands
-        .spawn((
-            Cable {
-                solver:     Solver::Linear,
-                obstacles:  vec![],
-                resolution: 0,
-            },
-            CableMeshConfig {
-                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
-                material: Some(cable_mat.clone()),
-                faces: FaceSides::Both,
-                ..default()
-            },
-            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
-        ))
-        .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, mid_start).with_cap(Capping::None));
-            parent.spawn(CableEndpoint::new(CableEnd::End, mid_end).with_cap(Capping::flat()));
-        });
+    spawn_cap_style_tube(
+        commands,
+        cable_mat.clone(),
+        mid_start,
+        mid_end,
+        Capping::None,
+        Capping::flat(),
+    );
 
     // Right: Round/None — open front, round cap at back
     let right_start = Vec3::new(cx + CAP_STYLE_TUBE_SPACING, NODE_Y, -CAP_STYLE_TUBE_OFFSET);
@@ -667,25 +674,14 @@ fn setup_section_cap_styles(
         NODE_Y,
         CAP_STYLE_TUBE_OFFSET,
     );
-    commands
-        .spawn((
-            Cable {
-                solver:     Solver::Linear,
-                obstacles:  vec![],
-                resolution: 0,
-            },
-            CableMeshConfig {
-                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
-                material: Some(cable_mat.clone()),
-                faces: FaceSides::Both,
-                ..default()
-            },
-            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
-        ))
-        .with_children(|parent| {
-            parent.spawn(CableEndpoint::new(CableEnd::Start, right_start).with_cap(Capping::Round));
-            parent.spawn(CableEndpoint::new(CableEnd::End, right_end).with_cap(Capping::None));
-        });
+    spawn_cap_style_tube(
+        commands,
+        cable_mat.clone(),
+        right_start,
+        right_end,
+        Capping::Round,
+        Capping::None,
+    );
 
     // Animated point lights inside each tube, staggered start positions.
     // All oscillate at the same speed (2s each direction, 0.5s pause at ends).
