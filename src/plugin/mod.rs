@@ -30,11 +30,6 @@ pub use systems::CableGizmoGroup;
 pub use systems::CableMeshChild;
 pub use systems::CableMeshHandle;
 pub use systems::DebugGizmos;
-use systems::compute_cable_routes;
-use systems::on_endpoint_detached;
-use systems::on_geometry_computed;
-use systems::render_cable_gizmos;
-use systems::render_debug_gizmos;
 
 /// Plugin that adds cable routing support to a Bevy app.
 ///
@@ -52,13 +47,13 @@ impl Plugin for CatenaryPlugin {
             .add_systems(
                 Update,
                 (
-                    compute_cable_routes,
-                    render_cable_gizmos,
-                    render_debug_gizmos,
+                    systems::compute_cable_routes,
+                    systems::render_cable_gizmos,
+                    systems::render_debug_gizmos,
                 )
                     .chain(),
             )
-            .add_observer(on_endpoint_detached)
-            .add_observer(on_geometry_computed);
+            .add_observer(systems::on_endpoint_detached)
+            .add_observer(systems::on_geometry_computed);
     }
 }

@@ -32,17 +32,11 @@ fn spawn_world_cable(app: &mut App, start: Vec3, end: Vec3) -> Entity {
         })
         .id();
 
-    let start_ep = app
-        .world_mut()
-        .spawn((CableEndpoint::new(CableEnd::Start, start), ChildOf(cable)))
-        .id();
+    app.world_mut()
+        .spawn((CableEndpoint::new(CableEnd::Start, start), ChildOf(cable)));
 
-    let end_ep = app
-        .world_mut()
-        .spawn((CableEndpoint::new(CableEnd::End, end), ChildOf(cable)))
-        .id();
-
-    let _ = (start_ep, end_ep);
+    app.world_mut()
+        .spawn((CableEndpoint::new(CableEnd::End, end), ChildOf(cable)));
     cable
 }
 

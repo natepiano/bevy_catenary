@@ -30,6 +30,10 @@ pub(super) const TANGENT_VECTOR_SCALE: f32 = 0.1;
 pub(super) const DEFAULT_TUBE_RADIUS: f32 = 0.06;
 pub(super) const DEFAULT_TUBE_SIDES: u32 = 32;
 
+// Perpendicular detection
+/// Dot-product threshold above which a vector is considered near-parallel to an axis.
+pub(super) const PERPENDICULAR_AXIS_THRESHOLD: f32 = 0.9;
+
 // Waypoints
 pub(super) const WAYPOINT_DOT_COLOR: Color = Color::srgb(0.0, 1.0, 0.0);
 pub(super) const WAYPOINT_DOT_SIZE: f32 = 0.05;

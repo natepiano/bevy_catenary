@@ -19,6 +19,7 @@ use super::constants::DEFAULT_TUBE_RADIUS;
 use super::constants::DEFAULT_TUBE_SIDES;
 use super::constants::MAX_ARM_RATIO;
 use super::constants::MIN_CAP_RINGS;
+use super::constants::PERPENDICULAR_AXIS_THRESHOLD;
 use crate::routing::CableGeometry;
 use crate::routing::MIN_SEGMENT_LENGTH;
 
@@ -1148,6 +1149,10 @@ fn compute_rmf(points: &[Vec3], tangents: &[Vec3]) -> Vec<(Vec3, Vec3)> {
 
 /// Find a vector perpendicular to the given direction.
 fn find_perpendicular(v: Vec3) -> Vec3 {
-    let candidate = if v.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+    let candidate = if v.x.abs() < PERPENDICULAR_AXIS_THRESHOLD {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
     v.cross(candidate).normalize_or_zero()
 }

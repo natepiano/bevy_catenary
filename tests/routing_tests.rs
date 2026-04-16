@@ -7,6 +7,7 @@
 
 use bevy::math::Vec3;
 use bevy_catenary::AStarPlanner;
+use bevy_catenary::Anchor;
 use bevy_catenary::CableSegment;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::CurveSolver;
@@ -842,8 +843,6 @@ fn obstacle_aabb_bounds_are_correct() {
 
 #[test]
 fn anchor_constructors() {
-    use bevy_catenary::Anchor;
-
     let a = Anchor::new(Position::new(1.0, 2.0, 3.0));
     assert_vec3_approx(a.position, Vec3::new(1.0, 2.0, 3.0), "anchor position");
     assert!(
