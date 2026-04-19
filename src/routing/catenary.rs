@@ -280,13 +280,13 @@ fn sample_parabolic_fallback(
 #[derive(Clone, Debug, Reflect)]
 pub struct CatenarySolver {
     /// Cable length / straight-line distance. Values > 1.0 add sag.
-    pub slack:              f32,
+    pub slack:             f32,
     /// Gravity direction (not necessarily normalized; magnitude is ignored).
-    pub gravity:            Vec3,
+    pub gravity:           Vec3,
     /// Default sample resolution when not specified by the request.
-    pub resolution:         u32,
+    pub resolution:        u32,
     /// Additional slack applied when a cable endpoint detaches. `None` disables the bump.
-    pub detach_slack_bump:  Option<f32>,
+    pub detach_slack_bump: Option<f32>,
 }
 
 impl Default for CatenarySolver {

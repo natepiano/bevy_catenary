@@ -32,7 +32,6 @@ use bevy_catenary::CableEnd;
 use bevy_catenary::CableEndpoint;
 use bevy_catenary::CableMeshChild;
 use bevy_catenary::CableMeshConfig;
-use bevy_catenary::TubeConfig;
 use bevy_catenary::Capping;
 use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
@@ -45,6 +44,7 @@ use bevy_catenary::Obstacle;
 use bevy_catenary::OnDetach;
 use bevy_catenary::PathStrategy;
 use bevy_catenary::Solver;
+use bevy_catenary::TubeConfig;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
@@ -972,8 +972,8 @@ fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<Standar
             CableMeshConfig {
                 tube: TubeConfig {
                     radius: TUBE_RADIUS * INSIDE_VIEW_RADIUS_MULTIPLIER,
-                    sides: 64,
-                    faces: FaceSides::Both,
+                    sides:  64,
+                    faces:  FaceSides::Both,
                 },
                 material: Some(cable_mat.clone()),
                 ..default()

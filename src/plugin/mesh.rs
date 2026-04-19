@@ -251,7 +251,6 @@ impl Default for ElbowConfig {
     }
 }
 
-
 /// Result of flattening all geometry segments into a single continuous polyline.
 struct FlattenedGeometry {
     points:      Vec<Vec3>,
@@ -420,8 +419,8 @@ fn generate_tube_rings(
             let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
             let (sin_a, cos_a) = angle.sin_cos();
 
-            let offset = *frame_normal * cos_a * config.tube.radius
-                + *binormal * sin_a * config.tube.radius;
+            let offset =
+                *frame_normal * cos_a * config.tube.radius + *binormal * sin_a * config.tube.radius;
             let vertex_pos = *point + offset;
             let vertex_normal = offset.normalize_or_zero();
 
