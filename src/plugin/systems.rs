@@ -19,8 +19,10 @@ use super::constants::WAYPOINT_DOT_COLOR;
 use super::constants::WAYPOINT_DOT_SIZE;
 use super::mesh;
 use super::mesh::CableMeshConfig;
+use crate::routing::CurveKind;
 use crate::routing::MIN_SEGMENT_LENGTH;
 use crate::routing::RouteRequest;
+use crate::routing::Solver;
 
 /// Gizmo group for cable debug wireframes.
 ///
@@ -36,6 +38,10 @@ pub struct CableMeshHandle(pub Handle<Mesh>);
 /// Stores the entity ID of the mesh child spawned for a cable.
 #[derive(Component)]
 pub struct CableMeshChild(pub Entity);
+
+/// Last world-space position resolved for an endpoint while it was attached.
+#[derive(Component, Clone, Copy)]
+pub(super) struct ResolvedEndpointPosition(Vec3);
 
 /// Query type for accessing cable geometry, config, and mesh handles.
 type CableMeshQuery<'w> = (
@@ -55,7 +61,11 @@ type CableMeshQuery<'w> = (
 pub(super) fn compute_cable_routes(
     mut commands: Commands,
     cables: Query<(Entity, Ref<Cable>, &Children)>,
-    endpoints: Query<(Ref<CableEndpoint>, Option<&AttachedTo>)>,
+    mut endpoints: Query<(
+        Ref<CableEndpoint>,
+        Option<&AttachedTo>,
+        Option<&mut ResolvedEndpointPosition>,
+    )>,
     transforms: Query<&GlobalTransform>,
     changed_transforms: Query<(), Changed<GlobalTransform>>,
 ) {
@@ -65,7 +75,8 @@ pub(super) fn compute_cable_routes(
         let mut end_pos = None;
 
         for child in children.iter() {
-            let Ok((endpoint, attached_to)) = endpoints.get(child) else {
+            let Ok((endpoint, attached_to, resolved_endpoint_position)) = endpoints.get_mut(child)
+            else {
                 continue;
             };
 
@@ -73,20 +84,25 @@ pub(super) fn compute_cable_routes(
                 needs_update = true;
             }
 
-            let pos = if let Some(attached) = attached_to {
-                if let Ok(target_transform) = transforms.get(attached.0) {
-                    if changed_transforms.get(attached.0).is_ok() {
-                        needs_update = true;
-                    }
-                    target_transform.transform_point(endpoint.offset)
-                } else {
-                    // Target despawned — fall back to raw offset
-                    endpoint.offset
+            let pos = if let Some(attached) = attached_to
+                && let Ok(target_transform) = transforms.get(attached.0)
+            {
+                if changed_transforms.get(attached.0).is_ok() {
+                    needs_update = true;
                 }
+                target_transform.transform_point(endpoint.offset)
             } else {
-                // World-attached — `offset` IS the world position
+                // World-attached, or the target disappeared before detachment was processed.
                 endpoint.offset
             };
+
+            if let Some(mut resolved) = resolved_endpoint_position {
+                if resolved.0 != pos {
+                    resolved.0 = pos;
+                }
+            } else {
+                commands.entity(child).insert(ResolvedEndpointPosition(pos));
+            }
 
             match endpoint.end {
                 CableEnd::Start => start_pos = Some(pos),
@@ -245,8 +261,8 @@ pub(super) fn on_geometry_computed(
     };
 
     // Read endpoint cap styles from children
-    let mut cap_start = config.cap_start.clone();
-    let mut cap_end = config.cap_end.clone();
+    let mut cap_start = config.caps.start.clone();
+    let mut cap_end = config.caps.end.clone();
     for child in children.iter() {
         if let Ok(endpoint) = endpoints.get(child) {
             match endpoint.end {
@@ -258,8 +274,8 @@ pub(super) fn on_geometry_computed(
 
     // Build the config with endpoint cap styles applied
     let mut mesh_config = config.clone();
-    mesh_config.cap_start = cap_start;
-    mesh_config.cap_end = cap_end;
+    mesh_config.caps.start = cap_start;
+    mesh_config.caps.end = cap_end;
 
     let new_mesh = mesh::generate_tube_mesh(geometry, &mesh_config);
 
@@ -289,25 +305,56 @@ pub(super) fn on_geometry_computed(
 /// [`OnDetach`] and acts accordingly.
 pub(super) fn on_endpoint_detached(
     trigger: On<Remove, AttachedTo>,
-    mut endpoints: Query<(&mut CableEndpoint, &ChildOf)>,
+    mut endpoints: Query<(
+        &mut CableEndpoint,
+        &ChildOf,
+        Option<&ResolvedEndpointPosition>,
+    )>,
+    mut cables: Query<&mut Cable>,
     mut commands: Commands,
 ) {
     let endpoint_entity = trigger.event_target();
-    let Ok((endpoint, child_of)) = endpoints.get_mut(endpoint_entity) else {
+    let Ok((mut endpoint, child_of, resolved_endpoint_position)) =
+        endpoints.get_mut(endpoint_entity)
+    else {
         return;
     };
 
     match endpoint.detach_policy {
-        OnDetach::HangInPlace | OnDetach::HangLoose => {
-            // `HangLoose` falls back to `HangInPlace` for now.
-            // The offset is already a world position for world-attached endpoints.
-            // For entity-attached, we'd ideally store the last resolved world pos,
-            // but since the target is being despawned, the offset stays as-is.
-            // The cable will keep its last computed geometry.
+        OnDetach::Remain => {
+            preserve_resolved_world_position(&mut endpoint, resolved_endpoint_position);
+
+            if let Ok(mut cable) = cables.get_mut(child_of.parent()) {
+                apply_solver_detach_response(&mut cable.solver);
+            }
         },
         OnDetach::Despawn => {
             let cable_entity = child_of.parent();
             commands.entity(cable_entity).despawn();
         },
+    }
+}
+
+const fn preserve_resolved_world_position(
+    endpoint: &mut CableEndpoint,
+    resolved_endpoint_position: Option<&ResolvedEndpointPosition>,
+) {
+    if let Some(resolved_endpoint_position) = resolved_endpoint_position {
+        endpoint.offset = resolved_endpoint_position.0;
+    }
+}
+
+fn apply_solver_detach_response(solver: &mut Solver) {
+    match solver {
+        Solver::Catenary(catenary_solver)
+        | Solver::Routed {
+            curve: CurveKind::Catenary(catenary_solver),
+            ..
+        } => {
+            if let Some(bump) = catenary_solver.detach_slack_bump {
+                catenary_solver.slack += bump;
+            }
+        },
+        Solver::Linear | Solver::Routed { .. } => {},
     }
 }

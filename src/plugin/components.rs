@@ -37,14 +37,14 @@ pub struct CableEndpoint {
 }
 
 impl CableEndpoint {
-    /// Create a new endpoint with default cap style (`None`) and detach policy (`HangInPlace`).
+    /// Create a new endpoint with default cap style (`Round`) and detach policy (`Remain`).
     #[must_use]
     pub const fn new(end: CableEnd, offset: Vec3) -> Self {
         Self {
             end,
             offset,
             cap_style: Capping::Round,
-            detach_policy: OnDetach::HangInPlace,
+            detach_policy: OnDetach::Remain,
         }
     }
 
@@ -67,14 +67,14 @@ impl CableEndpoint {
 ///
 /// When a target entity is despawned, Bevy auto-removes the [`AttachedTo`] relationship.
 /// An `OnRemove<AttachedTo>` observer fires and reads this policy to decide behavior.
+///
+/// How the curve itself reacts to detachment (e.g. increasing slack on a catenary) is a
+/// per-solver concern — see `CatenarySolver::with_detach_slack_bump`.
 #[derive(Clone, Debug, Default, Reflect)]
 pub enum OnDetach {
-    /// Convert to world-attached at last resolved position. Cable keeps its shape.
+    /// Convert to world-attached at the last resolved position. Cable keeps its shape.
     #[default]
-    HangInPlace,
-    /// (Future) Animate slack increase — cable "drops" from the detached end.
-    /// Currently falls back to `HangInPlace`.
-    HangLoose,
+    Remain,
     /// Despawn the entire cable when this endpoint's target is removed.
     Despawn,
 }

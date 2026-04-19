@@ -86,12 +86,13 @@ fn resolve_elbow_arms(
     max_arm: f32,
 ) -> (f32, f32) {
     config
-        .elbow_arm_overrides
+        .elbow
+        .arm_overrides
         .as_ref()
         .and_then(|overrides| overrides.get(elbow_idx))
         .map_or_else(
             || {
-                let arm = (p0.distance(p3) / 3.0 * config.elbow_arm_multiplier).min(max_arm);
+                let arm = (p0.distance(p3) / 3.0 * config.elbow.arm_multiplier).min(max_arm);
                 (arm, arm)
             },
             |&(a1, a2)| (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm)),
@@ -154,62 +155,102 @@ enum CapSide {
 
 /// Configuration for cable mesh generation. Attach to a [`Cable`] entity to control
 /// how its tube mesh is rendered.
-#[derive(Component, Clone, Debug, Reflect)]
+#[derive(Component, Clone, Debug, Default, Reflect)]
 #[reflect(Component)]
 pub struct CableMeshConfig {
-    /// Radius of the tube cross-section.
-    pub radius:                       f32,
-    /// Number of vertices around the cross-section circle.
-    pub sides:                        u32,
-    /// Cap style for the start end of the tube.
-    pub cap_start:                    Capping,
-    /// Cap style for the end of the tube.
-    pub cap_end:                      Capping,
-    /// Distance to trim from the start (tube begins this far along the path).
-    pub trim_start:                   f32,
-    /// Distance to trim from the end (tube ends this far before the path end).
-    pub trim_end:                     f32,
-    /// Elbow bend radius multiplier relative to tube radius.
-    pub elbow_bend_radius_multiplier: f32,
-    /// Minimum elbow radius multiplier — below this, elbows are skipped.
-    pub elbow_min_radius_multiplier:  f32,
-    /// Number of rings per 90 degrees of elbow bend.
-    pub elbow_rings_per_right_angle:  u32,
-    /// Minimum angle (degrees) between consecutive tangents to trigger an elbow.
-    pub elbow_angle_threshold_deg:    f32,
-    /// Multiplier for Bézier arm length at elbows (default 1.0).
-    /// Controls how far P1/P2 extend from P0/P3: `arm = (distance / 3.0) * multiplier`.
-    pub elbow_arm_multiplier:         f32,
-    /// Which sides of the tube surface to render.
-    pub faces:                        FaceSides,
+    /// Tube cross-section: radius, side count, which faces to render.
+    pub tube:     TubeConfig,
+    /// Cap styles at each end of the tube.
+    pub caps:     CapConfig,
+    /// Distance to trim the tube back from each end.
+    pub trim:     TrimConfig,
+    /// Elbow filleting between non-collinear tangents.
+    pub elbow:    ElbowConfig,
     /// Material to apply to the generated mesh. If `None`, no material is added.
-    pub material:                     Option<Handle<StandardMaterial>>,
-    /// Per-elbow arm overrides as `(control1_arm, control2_arm)` distances.
-    /// When set, each elbow uses its own independent arm lengths instead of the global
-    /// `elbow_arm_multiplier`. `None` = use the global multiplier for all elbows.
-    pub elbow_arm_overrides:          Option<Vec<(f32, f32)>>,
+    pub material: Option<Handle<StandardMaterial>>,
 }
 
-impl Default for CableMeshConfig {
+/// Tube cross-section configuration.
+#[derive(Clone, Debug, Reflect)]
+pub struct TubeConfig {
+    /// Radius of the tube cross-section.
+    pub radius: f32,
+    /// Number of vertices around the cross-section circle.
+    pub sides:  u32,
+    /// Which sides of the tube surface to render.
+    pub faces:  FaceSides,
+}
+
+impl Default for TubeConfig {
     fn default() -> Self {
         Self {
-            radius:                       DEFAULT_TUBE_RADIUS,
-            sides:                        DEFAULT_TUBE_SIDES,
-            cap_start:                    Capping::Round,
-            cap_end:                      Capping::Round,
-            trim_start:                   0.0,
-            trim_end:                     0.0,
-            elbow_bend_radius_multiplier: DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER,
-            elbow_min_radius_multiplier:  DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER,
-            elbow_rings_per_right_angle:  DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE,
-            elbow_angle_threshold_deg:    DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG,
-            elbow_arm_multiplier:         DEFAULT_ARM_MULTIPLIER,
-            elbow_arm_overrides:          None,
-            faces:                        FaceSides::default(),
-            material:                     None,
+            radius: DEFAULT_TUBE_RADIUS,
+            sides:  DEFAULT_TUBE_SIDES,
+            faces:  FaceSides::default(),
         }
     }
 }
+
+/// Cap style at each end of the tube.
+#[derive(Clone, Debug, Reflect)]
+pub struct CapConfig {
+    /// Cap style for the start end of the tube.
+    pub start: Capping,
+    /// Cap style for the end of the tube.
+    pub end:   Capping,
+}
+
+impl Default for CapConfig {
+    fn default() -> Self {
+        Self {
+            start: Capping::Round,
+            end:   Capping::Round,
+        }
+    }
+}
+
+/// Distance to trim from each end of the tube path.
+#[derive(Clone, Debug, Default, Reflect)]
+pub struct TrimConfig {
+    /// Distance to trim from the start (tube begins this far along the path).
+    pub start: f32,
+    /// Distance to trim from the end (tube ends this far before the path end).
+    pub end:   f32,
+}
+
+/// Elbow filleting configuration.
+#[derive(Clone, Debug, Reflect)]
+pub struct ElbowConfig {
+    /// Elbow bend radius multiplier relative to tube radius.
+    pub bend_radius_multiplier: f32,
+    /// Minimum elbow radius multiplier — below this, elbows are skipped.
+    pub min_radius_multiplier:  f32,
+    /// Number of rings per 90 degrees of elbow bend.
+    pub rings_per_right_angle:  u32,
+    /// Minimum angle (degrees) between consecutive tangents to trigger an elbow.
+    pub angle_threshold_deg:    f32,
+    /// Multiplier for Bézier arm length at elbows (default 1.0).
+    /// Controls how far P1/P2 extend from P0/P3: `arm = (distance / 3.0) * multiplier`.
+    pub arm_multiplier:         f32,
+    /// Per-elbow arm overrides as `(control1_arm, control2_arm)` distances.
+    /// When set, each elbow uses its own independent arm lengths instead of the global
+    /// `arm_multiplier`. `None` = use the global multiplier for all elbows.
+    pub arm_overrides:          Option<Vec<(f32, f32)>>,
+}
+
+impl Default for ElbowConfig {
+    fn default() -> Self {
+        Self {
+            bend_radius_multiplier: DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER,
+            min_radius_multiplier:  DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER,
+            rings_per_right_angle:  DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE,
+            angle_threshold_deg:    DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG,
+            arm_multiplier:         DEFAULT_ARM_MULTIPLIER,
+            arm_overrides:          None,
+        }
+    }
+}
+
 
 /// Result of flattening all geometry segments into a single continuous polyline.
 struct FlattenedGeometry {
@@ -263,7 +304,7 @@ fn add_end_caps(
         return;
     }
 
-    let negate_outside = matches!(config.faces, FaceSides::Inside);
+    let negate_outside = matches!(config.tube.faces, FaceSides::Inside);
 
     // Start cap — original: flip_winding = !negate_outside
     let start_winding = if negate_outside {
@@ -275,13 +316,13 @@ fn add_end_caps(
         center: &all_points[0],
         direction: -all_tangents[0],
         frame: frames[0],
-        radius: config.radius,
+        radius: config.tube.radius,
         sides,
         ring_base: 0,
-        faces: &config.faces,
+        faces: &config.tube.faces,
         winding: start_winding,
     };
-    add_single_cap(&config.cap_start, &start_context, buffers);
+    add_single_cap(&config.caps.start, &start_context, buffers);
 
     // End cap
     let last = point_count - 1;
@@ -296,13 +337,13 @@ fn add_end_caps(
         center: &all_points[last],
         direction: all_tangents[last],
         frame: frames[last],
-        radius: config.radius,
+        radius: config.tube.radius,
         sides,
         ring_base: last_ring_base,
-        faces: &config.faces,
+        faces: &config.tube.faces,
         winding: end_winding,
     };
-    add_single_cap(&config.cap_end, &end_context, buffers);
+    add_single_cap(&config.caps.end, &end_context, buffers);
 }
 
 /// Geometric parameters shared by all cap-generation helpers.
@@ -379,7 +420,8 @@ fn generate_tube_rings(
             let angle = (j.to_f32() / sides.to_f32()) * std::f32::consts::TAU;
             let (sin_a, cos_a) = angle.sin_cos();
 
-            let offset = *frame_normal * cos_a * config.radius + *binormal * sin_a * config.radius;
+            let offset = *frame_normal * cos_a * config.tube.radius
+                + *binormal * sin_a * config.tube.radius;
             let vertex_pos = *point + offset;
             let vertex_normal = offset.normalize_or_zero();
 
@@ -401,7 +443,7 @@ fn generate_tube_rings(
                 let next_j = next_base + j;
                 let next_j_next = next_base + j_next;
 
-                match config.faces {
+                match config.tube.faces {
                     FaceSides::Outside => {
                         push_quad(
                             out.buffers.indices,
@@ -489,7 +531,7 @@ fn apply_inside_normals(
 /// producing one seamless tube for the entire cable path.
 #[must_use]
 pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) -> Mesh {
-    let sides = config.sides.max(3);
+    let sides = config.tube.sides.max(3);
     let total_length = geometry.total_length.max(MIN_SEGMENT_LENGTH);
 
     let flat = flatten_geometry(geometry);
@@ -502,13 +544,13 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
     }
 
     // Trim start/end of the path if configured (for junction hiding).
-    if config.trim_start > 0.0 || config.trim_end > 0.0 {
+    if config.trim.start > 0.0 || config.trim.end > 0.0 {
         trim_path(
             &mut all_points,
             &mut all_tangents,
             &mut all_arc_lengths,
-            config.trim_start,
-            config.trim_end,
+            config.trim.start,
+            config.trim.end,
         );
     }
 
@@ -553,7 +595,7 @@ pub fn generate_tube_mesh(geometry: &CableGeometry, config: &CableMeshConfig) ->
     );
 
     apply_inside_normals(
-        &config.faces,
+        &config.tube.faces,
         &mut positions,
         &mut normals,
         &mut uvs,
@@ -667,7 +709,7 @@ fn insert_knee_rings(
     }
 
     let params = ElbowParams::from_config(config);
-    let rings_per_right_angle = config.elbow_rings_per_right_angle;
+    let rings_per_right_angle = config.elbow.rings_per_right_angle;
 
     let mut output_points = Vec::with_capacity(point_count * 2);
     let mut output_arc_lengths = Vec::with_capacity(point_count * 2);
@@ -841,11 +883,11 @@ struct ElbowParams {
 
 impl ElbowParams {
     fn from_config(config: &CableMeshConfig) -> Self {
-        let tube_radius = config.radius;
+        let tube_radius = config.tube.radius;
         Self {
-            angle_threshold_cos: (config.elbow_angle_threshold_deg.to_radians()).cos(),
-            bend_radius:         tube_radius * config.elbow_bend_radius_multiplier,
-            min_bend_radius:     tube_radius * config.elbow_min_radius_multiplier,
+            angle_threshold_cos: (config.elbow.angle_threshold_deg.to_radians()).cos(),
+            bend_radius:         tube_radius * config.elbow.bend_radius_multiplier,
+            min_bend_radius:     tube_radius * config.elbow.min_radius_multiplier,
         }
     }
 }
@@ -914,14 +956,14 @@ pub fn compute_elbow_metadata(
     }
 
     // Trim (same logic as `generate_tube_mesh`).
-    if config.trim_start > 0.0 || config.trim_end > 0.0 {
+    if config.trim.start > 0.0 || config.trim.end > 0.0 {
         let mut tangents = recompute_tangents(&points);
         trim_path(
             &mut points,
             &mut tangents,
             &mut arc_lengths,
-            config.trim_start,
-            config.trim_end,
+            config.trim.start,
+            config.trim.end,
         );
     }
 

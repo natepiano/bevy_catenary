@@ -264,7 +264,7 @@ fn detach_policy_despawn_removes_cable() {
 }
 
 #[test]
-fn detach_policy_hang_in_place_keeps_cable() {
+fn detach_policy_remain_keeps_cable() {
     let mut app = build_test_app();
 
     let target = app
@@ -298,10 +298,10 @@ fn detach_policy_hang_in_place_keeps_cable() {
     app.world_mut().despawn(target);
     app.update();
 
-    // Cable should still exist (HangInPlace is the default)
+    // Cable should still exist (Remain is the default)
     assert!(
         app.world().get_entity(cable).is_ok(),
-        "Cable should survive target despawn with OnDetach::HangInPlace"
+        "Cable should survive target despawn with OnDetach::Remain"
     );
 
     let computed = app.world().get::<ComputedCableGeometry>(cable).unwrap();
@@ -309,4 +309,101 @@ fn detach_policy_hang_in_place_keeps_cable() {
         computed.geometry.is_some(),
         "Cable should retain its last computed geometry"
     );
+}
+
+#[test]
+fn detach_policy_remain_preserves_world_position() {
+    let mut app = build_test_app();
+
+    let target = app
+        .world_mut()
+        .spawn(Transform::from_translation(Vec3::new(5.0, 0.0, 0.0)))
+        .id();
+
+    let cable = app
+        .world_mut()
+        .spawn(Cable {
+            solver:     Solver::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
+            obstacles:  vec![],
+            resolution: 0,
+        })
+        .id();
+
+    let detached_endpoint = app
+        .world_mut()
+        .spawn((
+            CableEndpoint::new(CableEnd::Start, Vec3::new(0.5, 0.0, 0.0)),
+            AttachedTo(target),
+            ChildOf(cable),
+        ))
+        .id();
+    app.world_mut().spawn((
+        CableEndpoint::new(CableEnd::End, Vec3::new(-3.0, 2.0, 0.0)),
+        ChildOf(cable),
+    ));
+
+    app.update();
+
+    app.world_mut().despawn(target);
+    app.update();
+
+    let endpoint = app.world().get::<CableEndpoint>(detached_endpoint).unwrap();
+    assert_eq!(
+        endpoint.offset,
+        Vec3::new(5.5, 0.0, 0.0),
+        "Remain should convert the local offset to the last resolved world position"
+    );
+}
+
+#[test]
+fn catenary_detach_slack_bump_increases_slack_on_detach() {
+    let mut app = build_test_app();
+
+    let target = app
+        .world_mut()
+        .spawn(Transform::from_translation(Vec3::new(5.0, 0.0, 0.0)))
+        .id();
+
+    let cable = app
+        .world_mut()
+        .spawn(Cable {
+            solver:     Solver::Catenary(
+                CatenarySolver::new()
+                    .with_slack(DEFAULT_SLACK)
+                    .with_detach_slack_bump(0.35),
+            ),
+            obstacles:  vec![],
+            resolution: 0,
+        })
+        .id();
+
+    app.world_mut().spawn((
+        CableEndpoint::new(CableEnd::Start, Vec3::new(0.5, 0.0, 0.0)),
+        AttachedTo(target),
+        ChildOf(cable),
+    ));
+    app.world_mut().spawn((
+        CableEndpoint::new(CableEnd::End, Vec3::new(-3.0, 2.0, 0.0)),
+        ChildOf(cable),
+    ));
+
+    app.update();
+
+    app.world_mut().despawn(target);
+    app.update();
+    app.update();
+
+    let cable = app.world().get::<Cable>(cable).unwrap();
+    assert!(
+        matches!(&cable.solver, Solver::Catenary(_)),
+        "test setup should keep the cable on a catenary solver, got {:?}",
+        cable.solver
+    );
+    if let Solver::Catenary(catenary_solver) = &cable.solver {
+        assert!(
+            (catenary_solver.slack - (DEFAULT_SLACK + 0.35)).abs() < f32::EPSILON,
+            "detach_slack_bump should add its value to slack once on detach (got {})",
+            catenary_solver.slack
+        );
+    }
 }

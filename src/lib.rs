@@ -49,13 +49,17 @@ pub use plugin::CableGizmoGroup;
 pub use plugin::CableMeshChild;
 pub use plugin::CableMeshConfig;
 pub use plugin::CableMeshHandle;
+pub use plugin::CapConfig;
 pub use plugin::Capping;
 pub use plugin::CatenaryPlugin;
 pub use plugin::ComputedCableGeometry;
 pub use plugin::DebugGizmos;
+pub use plugin::ElbowConfig;
 pub use plugin::ElbowMetadata;
 pub use plugin::FaceSides;
 pub use plugin::OnDetach;
+pub use plugin::TrimConfig;
+pub use plugin::TubeConfig;
 pub use plugin::compute_elbow_metadata;
 pub use plugin::generate_tube_mesh;
 // Routing

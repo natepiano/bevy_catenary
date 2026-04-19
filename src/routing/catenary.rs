@@ -280,19 +280,22 @@ fn sample_parabolic_fallback(
 #[derive(Clone, Debug, Reflect)]
 pub struct CatenarySolver {
     /// Cable length / straight-line distance. Values > 1.0 add sag.
-    pub slack:      f32,
+    pub slack:              f32,
     /// Gravity direction (not necessarily normalized; magnitude is ignored).
-    pub gravity:    Vec3,
+    pub gravity:            Vec3,
     /// Default sample resolution when not specified by the request.
-    pub resolution: u32,
+    pub resolution:         u32,
+    /// Additional slack applied when a cable endpoint detaches. `None` disables the bump.
+    pub detach_slack_bump:  Option<f32>,
 }
 
 impl Default for CatenarySolver {
     fn default() -> Self {
         Self {
-            slack:      DEFAULT_SLACK,
-            gravity:    DEFAULT_GRAVITY,
-            resolution: DEFAULT_RESOLUTION,
+            slack:             DEFAULT_SLACK,
+            gravity:           DEFAULT_GRAVITY,
+            resolution:        DEFAULT_RESOLUTION,
+            detach_slack_bump: None,
         }
     }
 }
@@ -302,9 +305,10 @@ impl CatenarySolver {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            slack:      DEFAULT_SLACK,
-            gravity:    DEFAULT_GRAVITY,
-            resolution: DEFAULT_RESOLUTION,
+            slack:             DEFAULT_SLACK,
+            gravity:           DEFAULT_GRAVITY,
+            resolution:        DEFAULT_RESOLUTION,
+            detach_slack_bump: None,
         }
     }
 
@@ -326,6 +330,13 @@ impl CatenarySolver {
     #[must_use]
     pub const fn with_resolution(mut self, resolution: u32) -> Self {
         self.resolution = resolution;
+        self
+    }
+
+    /// Configure extra slack to apply when any endpoint of the owning cable detaches.
+    #[must_use]
+    pub const fn with_detach_slack_bump(mut self, bump: f32) -> Self {
+        self.detach_slack_bump = Some(bump);
         self
     }
 }

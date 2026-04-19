@@ -32,6 +32,7 @@ use bevy_catenary::CableEnd;
 use bevy_catenary::CableEndpoint;
 use bevy_catenary::CableMeshChild;
 use bevy_catenary::CableMeshConfig;
+use bevy_catenary::TubeConfig;
 use bevy_catenary::Capping;
 use bevy_catenary::CatenaryPlugin;
 use bevy_catenary::CatenarySolver;
@@ -79,6 +80,7 @@ const ZOOM_MARGIN_NAV: f32 = 0.12;
 const CABLE_COLOR: Color = Color::srgb(0.9, 0.5, 0.1);
 const DESPAWN_GREEN: Color = Color::srgb(0.3, 0.8, 0.3);
 const DESPAWN_RED: Color = Color::srgb(0.8, 0.3, 0.3);
+const DETACH_BUMP_BLUE: Color = Color::srgb(0.3, 0.5, 0.9);
 const DRAGGABLE_COLOR: Color = Color::srgb(0.2, 0.7, 0.7);
 const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.4);
 const OBSTACLE_COLOR: Color = Color::srgba(0.8, 0.2, 0.2, 0.25);
@@ -268,38 +270,62 @@ enum InspectorVisibility {
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
 struct CableSettings {
+    tube:  TubeSettings,
+    joint: JointSettings,
+    elbow: ElbowSettings,
+}
+
+#[derive(Reflect, InspectorOptions)]
+#[reflect(InspectorOptions)]
+struct TubeSettings {
     #[inspector(min = 0.01, max = 0.3, display = NumberDisplay::Slider)]
-    tube_radius:                  f32,
+    radius: f32,
     #[inspector(min = 1, max = 64, display = NumberDisplay::Slider)]
-    tube_sides:                   u32,
+    sides:  u32,
+}
+
+#[derive(Reflect, InspectorOptions)]
+#[reflect(InspectorOptions)]
+struct JointSettings {
     #[inspector(min = 1.0, max = 4.0, display = NumberDisplay::Slider)]
-    joint_radius_multiplier:      f32,
+    radius_multiplier: f32,
     #[inspector(min = 8, max = 32, display = NumberDisplay::Slider)]
-    joint_sphere_segments:        u32,
+    segments:          u32,
+}
+
+#[derive(Reflect, InspectorOptions)]
+#[reflect(InspectorOptions)]
+struct ElbowSettings {
     #[inspector(min = 1.0, max = 20.0, display = NumberDisplay::Slider)]
-    elbow_bend_radius_multiplier: f32,
+    bend_radius_multiplier: f32,
     #[inspector(min = 0.5, max = 5.0, display = NumberDisplay::Slider)]
-    elbow_min_radius_multiplier:  f32,
+    min_radius_multiplier:  f32,
     #[inspector(min = 2, max = 32, display = NumberDisplay::Slider)]
-    elbow_rings_per_right_angle:  u32,
+    rings_per_right_angle:  u32,
     #[inspector(min = 1.0, max = 90.0, display = NumberDisplay::Slider)]
-    elbow_angle_threshold_deg:    f32,
+    angle_threshold_deg:    f32,
     #[inspector(min = 0.1, max = 3.0, display = NumberDisplay::Slider)]
-    elbow_arm_multiplier:         f32,
+    arm_multiplier:         f32,
 }
 
 impl Default for CableSettings {
     fn default() -> Self {
         Self {
-            tube_radius:                  TUBE_RADIUS,
-            tube_sides:                   TUBE_SIDES,
-            joint_radius_multiplier:      JOINT_RADIUS_MULTIPLIER,
-            joint_sphere_segments:        JOINT_SPHERE_SEGMENTS,
-            elbow_bend_radius_multiplier: 1.0,
-            elbow_min_radius_multiplier:  0.5,
-            elbow_rings_per_right_angle:  32,
-            elbow_angle_threshold_deg:    25.0,
-            elbow_arm_multiplier:         1.0,
+            tube:  TubeSettings {
+                radius: TUBE_RADIUS,
+                sides:  TUBE_SIDES,
+            },
+            joint: JointSettings {
+                radius_multiplier: JOINT_RADIUS_MULTIPLIER,
+                segments:          JOINT_SPHERE_SEGMENTS,
+            },
+            elbow: ElbowSettings {
+                bend_radius_multiplier: 1.0,
+                min_radius_multiplier:  0.5,
+                rings_per_right_angle:  32,
+                angle_threshold_deg:    25.0,
+                arm_multiplier:         1.0,
+            },
         }
     }
 }
@@ -604,9 +630,12 @@ fn spawn_cap_style_tube(
                 resolution: 0,
             },
             CableMeshConfig {
-                radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                tube: TubeConfig {
+                    radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                    faces: FaceSides::Both,
+                    ..default()
+                },
                 material: Some(material),
-                faces: FaceSides::Both,
                 ..default()
             },
             RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
@@ -941,9 +970,11 @@ fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<Standar
                 resolution: 0,
             },
             CableMeshConfig {
-                radius: TUBE_RADIUS * INSIDE_VIEW_RADIUS_MULTIPLIER,
-                sides: 64,
-                faces: FaceSides::Both,
+                tube: TubeConfig {
+                    radius: TUBE_RADIUS * INSIDE_VIEW_RADIUS_MULTIPLIER,
+                    sides: 64,
+                    faces: FaceSides::Both,
+                },
                 material: Some(cable_mat.clone()),
                 ..default()
             },
@@ -1138,6 +1169,20 @@ fn animate_tube_light(
     }
 }
 
+struct DetachDemoAssets<'a> {
+    sphere_mesh: Handle<Mesh>,
+    node_mesh:   &'a Handle<Mesh>,
+    node_mat:    &'a Handle<StandardMaterial>,
+    cable_mat:   &'a Handle<StandardMaterial>,
+}
+
+struct DetachDemoRow {
+    z:            f32,
+    sphere_color: Color,
+    solver:       CatenarySolver,
+    policy:       OnDetach,
+}
+
 /// Spawn the detach demo section (can be called again on reset).
 fn spawn_detach_demo(
     commands: &mut Commands,
@@ -1148,85 +1193,87 @@ fn spawn_detach_demo(
     cable_mat: &Handle<StandardMaterial>,
 ) {
     let cx = SECTION_X[6];
-    let sphere_mesh = meshes.add(Sphere::new(HUB_SPHERE_RADIUS).mesh().uv(16, 16));
+    let assets = DetachDemoAssets {
+        sphere_mesh: meshes.add(Sphere::new(HUB_SPHERE_RADIUS).mesh().uv(16, 16)),
+        node_mesh,
+        node_mat,
+        cable_mat,
+    };
 
-    // Top: HangInPlace (green sphere)
-    let green_mat = materials.add(StandardMaterial {
-        base_color: DESPAWN_GREEN,
+    let rows = [
+        // Top: default Remain — cable keeps its shape on detach.
+        DetachDemoRow {
+            z:            -1.5,
+            sphere_color: DESPAWN_GREEN,
+            solver:       CatenarySolver::new().with_slack(SLACK_NORMAL),
+            policy:       OnDetach::Remain,
+        },
+        // Middle: Remain + catenary detach_slack_bump — cable droops visibly on detach.
+        DetachDemoRow {
+            z:            0.0,
+            sphere_color: DETACH_BUMP_BLUE,
+            solver:       CatenarySolver::new()
+                .with_slack(SLACK_NORMAL)
+                .with_detach_slack_bump(0.35),
+            policy:       OnDetach::Remain,
+        },
+        // Bottom: Despawn — whole cable despawns on detach.
+        DetachDemoRow {
+            z:            1.5,
+            sphere_color: DESPAWN_RED,
+            solver:       CatenarySolver::new().with_slack(SLACK_NORMAL),
+            policy:       OnDetach::Despawn,
+        },
+    ];
+
+    for row in rows {
+        spawn_detach_demo_row(commands, materials, &assets, cx, row);
+    }
+}
+
+fn spawn_detach_demo_row(
+    commands: &mut Commands,
+    materials: &mut Assets<StandardMaterial>,
+    assets: &DetachDemoAssets,
+    cx: f32,
+    row: DetachDemoRow,
+) {
+    let sphere_mat = materials.add(StandardMaterial {
+        base_color: row.sphere_color,
         ..default()
     });
-    let green_sphere = commands
+    let sphere = commands
         .spawn((
-            Mesh3d(sphere_mesh.clone()),
-            MeshMaterial3d(green_mat),
-            Transform::from_translation(Vec3::new(cx - 2.0, NODE_Y, -1.5)),
+            Mesh3d(assets.sphere_mesh.clone()),
+            MeshMaterial3d(sphere_mat),
+            Transform::from_translation(Vec3::new(cx - 2.0, NODE_Y, row.z)),
             Despawnable,
             DetachDemoEntity,
         ))
         .observe(on_despawnable_clicked)
         .id();
 
-    let anchor_pos = Vec3::new(cx + 2.0, NODE_Y, -1.5);
-    spawn_node_cube(commands, node_mesh, node_mat, anchor_pos).insert(DetachDemoEntity);
+    let anchor_pos = Vec3::new(cx + 2.0, NODE_Y, row.z);
+    spawn_node_cube(commands, assets.node_mesh, assets.node_mat, anchor_pos)
+        .insert(DetachDemoEntity);
 
     commands
         .spawn((
             Cable {
-                solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
+                solver:     Solver::Catenary(row.solver),
                 obstacles:  vec![],
                 resolution: 0,
             },
             CableMeshConfig {
-                material: Some(cable_mat.clone()),
+                material: Some(assets.cable_mat.clone()),
                 ..default()
             },
             DetachDemoEntity,
         ))
         .with_children(|parent| {
             parent.spawn((
-                CableEndpoint::new(CableEnd::Start, Vec3::ZERO),
-                AttachedTo(green_sphere),
-            ));
-            parent.spawn(CableEndpoint::new(CableEnd::End, anchor_pos));
-        });
-
-    // Bottom: Despawn (red sphere)
-    let red_mat = materials.add(StandardMaterial {
-        base_color: DESPAWN_RED,
-        ..default()
-    });
-    let red_sphere = commands
-        .spawn((
-            Mesh3d(sphere_mesh),
-            MeshMaterial3d(red_mat),
-            Transform::from_translation(Vec3::new(cx - 2.0, NODE_Y, 1.5)),
-            Despawnable,
-            DetachDemoEntity,
-        ))
-        .observe(on_despawnable_clicked)
-        .id();
-
-    let anchor_pos = Vec3::new(cx + 2.0, NODE_Y, 1.5);
-    spawn_node_cube(commands, node_mesh, node_mat, anchor_pos).insert(DetachDemoEntity);
-
-    commands
-        .spawn((
-            Cable {
-                solver:     Solver::Catenary(CatenarySolver::new().with_slack(SLACK_NORMAL)),
-                obstacles:  vec![],
-                resolution: 0,
-            },
-            CableMeshConfig {
-                material: Some(cable_mat.clone()),
-                ..default()
-            },
-            DetachDemoEntity,
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                CableEndpoint::new(CableEnd::Start, Vec3::ZERO)
-                    .with_detach_policy(OnDetach::Despawn),
-                AttachedTo(red_sphere),
+                CableEndpoint::new(CableEnd::Start, Vec3::ZERO).with_detach_policy(row.policy),
+                AttachedTo(sphere),
             ));
             parent.spawn(CableEndpoint::new(CableEnd::End, anchor_pos));
         });
@@ -1781,13 +1828,13 @@ fn sync_cable_settings(
     for (entity, config, computed, multiplier) in &cables {
         let mut new_config = config.clone();
         let mult = multiplier.map_or(1.0, |m| m.0);
-        new_config.radius = settings.tube_radius * mult;
-        new_config.sides = settings.tube_sides;
-        new_config.elbow_bend_radius_multiplier = settings.elbow_bend_radius_multiplier;
-        new_config.elbow_min_radius_multiplier = settings.elbow_min_radius_multiplier;
-        new_config.elbow_rings_per_right_angle = settings.elbow_rings_per_right_angle;
-        new_config.elbow_angle_threshold_deg = settings.elbow_angle_threshold_deg;
-        new_config.elbow_arm_multiplier = settings.elbow_arm_multiplier;
+        new_config.tube.radius = settings.tube.radius * mult;
+        new_config.tube.sides = settings.tube.sides;
+        new_config.elbow.bend_radius_multiplier = settings.elbow.bend_radius_multiplier;
+        new_config.elbow.min_radius_multiplier = settings.elbow.min_radius_multiplier;
+        new_config.elbow.rings_per_right_angle = settings.elbow.rings_per_right_angle;
+        new_config.elbow.angle_threshold_deg = settings.elbow.angle_threshold_deg;
+        new_config.elbow.arm_multiplier = settings.elbow.arm_multiplier;
         // Re-insert both to trigger the mesh rebuild observer
         commands
             .entity(entity)
