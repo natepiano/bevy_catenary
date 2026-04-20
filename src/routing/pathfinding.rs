@@ -5,7 +5,6 @@ use std::collections::BinaryHeap;
 use std::collections::HashMap;
 
 use bevy::math::Vec3;
-use bevy_kana::Position;
 use bevy_kana::ToF32;
 use bevy_kana::ToI32;
 
@@ -121,7 +120,7 @@ impl AStarPlanner {
 
     /// Check if a world-space point is inside any obstacle (with margin).
     fn is_blocked(&self, pos: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_point_in_any_obstacle(Position(pos), obstacles, self.margin)
+        types::is_point_in_any_obstacle(pos, obstacles, self.margin)
     }
 
     /// 26-connected neighbors (all adjacent cells including diagonals).
@@ -216,9 +215,7 @@ impl AStarPlanner {
 }
 
 impl PathPlanner for AStarPlanner {
-    fn plan(&self, start: Position, end: Position, obstacles: &[Obstacle]) -> Vec<Vec3> {
-        let start = *start;
-        let end = *end;
+    fn plan(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> Vec<Vec3> {
         if obstacles.is_empty() {
             return vec![start, end];
         }
@@ -260,8 +257,8 @@ impl AStarPlanner {
     /// Check if any obstacle intersects the direct line from start to end.
     fn is_direct_path_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
         types::is_segment_blocked(
-            Position(start),
-            Position(end),
+            start,
+            end,
             obstacles,
             self.margin,
             ASTAR_SEGMENT_SAMPLE_STEPS,

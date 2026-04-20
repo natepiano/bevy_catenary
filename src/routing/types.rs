@@ -6,14 +6,13 @@
 use bevy::math::Quat;
 use bevy::math::Vec3;
 use bevy::reflect::Reflect;
-use bevy_kana::Position;
 use bevy_kana::ToF32;
 
 /// Where a cable connects to an object.
 #[derive(Clone, Copy, Debug)]
 pub struct Anchor {
     /// World-space position of the connection point.
-    pub position:  Position,
+    pub position:  Vec3,
     /// Preferred exit direction at this anchor (for tangent continuity).
     /// When `None`, the solver chooses the natural direction.
     pub direction: Option<Vec3>,
@@ -22,18 +21,18 @@ pub struct Anchor {
 impl Anchor {
     /// Create an anchor at a position with no preferred direction.
     #[must_use]
-    pub const fn new(position: Position) -> Self {
+    pub fn new(position: impl Into<Vec3>) -> Self {
         Self {
-            position,
+            position:  position.into(),
             direction: None,
         }
     }
 
     /// Create an anchor with a preferred exit direction.
     #[must_use]
-    pub const fn with_direction(position: Position, direction: Vec3) -> Self {
+    pub fn with_direction(position: impl Into<Vec3>, direction: Vec3) -> Self {
         Self {
-            position,
+            position:  position.into(),
             direction: Some(direction),
         }
     }
@@ -45,7 +44,7 @@ pub struct Obstacle {
     /// Half-extents of the AABB in local space.
     pub half_extents: Vec3,
     /// World-space position of the obstacle center.
-    pub position:     Position,
+    pub position:     Vec3,
     /// World-space rotation of the obstacle.
     pub rotation:     Quat,
 }
@@ -53,35 +52,36 @@ pub struct Obstacle {
 impl Obstacle {
     /// Create an axis-aligned obstacle (no rotation).
     #[must_use]
-    pub const fn new(half_extents: Vec3, position: Position) -> Self {
+    pub fn new(half_extents: Vec3, position: impl Into<Vec3>) -> Self {
         Self {
             half_extents,
-            position,
+            position: position.into(),
             rotation: Quat::IDENTITY,
         }
     }
 
     /// Create a rotated obstacle.
     #[must_use]
-    pub const fn with_rotation(half_extents: Vec3, position: Position, rotation: Quat) -> Self {
+    pub fn with_rotation(half_extents: Vec3, position: impl Into<Vec3>, rotation: Quat) -> Self {
         Self {
             half_extents,
-            position,
+            position: position.into(),
             rotation,
         }
     }
 
     /// World-space AABB minimum corner (ignoring rotation for axis-aligned tests).
     #[must_use]
-    pub fn aabb_min(&self) -> Position { self.position - self.half_extents }
+    pub fn aabb_min(&self) -> Vec3 { self.position - self.half_extents }
 
     /// World-space AABB maximum corner (ignoring rotation for axis-aligned tests).
     #[must_use]
-    pub fn aabb_max(&self) -> Position { self.position + self.half_extents }
+    pub fn aabb_max(&self) -> Vec3 { self.position + self.half_extents }
 
     /// Check if a point is inside this obstacle's AABB, expanded by `margin`.
     #[must_use]
-    pub fn contains_point(&self, pos: Position, margin: f32) -> bool {
+    pub fn contains_point(&self, pos: impl Into<Vec3>, margin: f32) -> bool {
+        let pos: Vec3 = pos.into();
         let min = self.aabb_min() - Vec3::splat(margin);
         let max = self.aabb_max() + Vec3::splat(margin);
         pos.x >= min.x
@@ -95,15 +95,15 @@ impl Obstacle {
 
 /// Check if a point is inside any obstacle's AABB, expanded by `margin`.
 #[must_use]
-pub(super) fn is_point_in_any_obstacle(pos: Position, obstacles: &[Obstacle], margin: f32) -> bool {
+pub(super) fn is_point_in_any_obstacle(pos: Vec3, obstacles: &[Obstacle], margin: f32) -> bool {
     obstacles.iter().any(|obs| obs.contains_point(pos, margin))
 }
 
 /// Check if any obstacle intersects a line segment by sampling `steps` evenly-spaced points.
 #[must_use]
 pub(super) fn is_segment_blocked(
-    start: Position,
-    end: Position,
+    start: Vec3,
+    end: Vec3,
     obstacles: &[Obstacle],
     margin: f32,
     steps: u32,
@@ -119,9 +119,9 @@ pub(super) fn is_segment_blocked(
 #[derive(Clone, Debug)]
 pub struct RouteRequest<'a> {
     /// Starting position of the cable.
-    pub start:      Position,
+    pub start:      Vec3,
     /// Ending position of the cable.
-    pub end:        Position,
+    pub end:        Vec3,
     /// Obstacles to route around (may be empty).
     pub obstacles:  &'a [Obstacle],
     /// Number of sample points per segment.
@@ -197,10 +197,10 @@ impl CableSegment {
 
     /// Create a segment by evenly sampling `n` points along a straight line.
     #[must_use]
-    pub fn straight_line(start: Position, end: Position, n: usize) -> Self {
+    pub fn straight_line(start: impl Into<Vec3>, end: impl Into<Vec3>, n: usize) -> Self {
+        let start: Vec3 = start.into();
+        let end: Vec3 = end.into();
         let n = n.max(2);
-        let start = *start;
-        let end = *end;
         let points: Vec<Vec3> = (0..n)
             .map(|i| {
                 let t = i.to_f32() / (n - 1).to_f32();

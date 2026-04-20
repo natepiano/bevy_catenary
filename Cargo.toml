@@ -48,6 +48,7 @@ bevy_kana = "0.0.3"
 
 [[example]]
 name = "playground"
+path = "examples/playground/main.rs"
 
 [dev-dependencies]
 bevy                = { version = "0.18.1", features = ["default"] }

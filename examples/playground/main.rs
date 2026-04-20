@@ -57,106 +57,51 @@ use bevy_lagrange::TrackpadBehavior;
 use bevy_lagrange::TrackpadInput;
 use bevy_lagrange::ZoomToFit;
 
-// ============================================================================
-// Cable
-// ============================================================================
+mod animation;
+mod constants;
 
-const OBSTACLE_HALF_EXTENTS: Vec3 = Vec3::new(0.8, 0.8, 0.8);
-const SLACK_NORMAL: f32 = 1.15;
-
-// ============================================================================
-// Camera
-// ============================================================================
-
-const NAV_DURATION_MS: u64 = 1200;
-const ZOOM_DURATION_MS: u64 = 1000;
-const ZOOM_MARGIN_MESH: f32 = 0.15;
-const ZOOM_MARGIN_NAV: f32 = 0.12;
-
-// ============================================================================
-// Colors
-// ============================================================================
-
-const CABLE_COLOR: Color = Color::srgb(0.9, 0.5, 0.1);
-const DESPAWN_GREEN: Color = Color::srgb(0.3, 0.8, 0.3);
-const DESPAWN_RED: Color = Color::srgb(0.8, 0.3, 0.3);
-const DETACH_BUMP_BLUE: Color = Color::srgb(0.3, 0.5, 0.9);
-const DRAGGABLE_COLOR: Color = Color::srgb(0.2, 0.7, 0.7);
-const NODE_COLOR: Color = Color::srgba(0.4, 0.6, 0.8, 0.4);
-const OBSTACLE_COLOR: Color = Color::srgba(0.8, 0.2, 0.2, 0.25);
-const POINT_LIGHT_COLOR: Color = Color::srgb(1.0, 0.95, 0.8);
-const TRANSPARENT_TUBE_COLOR: Color = Color::srgba(0.85, 0.55, 0.2, 0.2);
-
-// ============================================================================
-// Ground
-// ============================================================================
-
-const GROUND_DEPTH: f32 = 14.0;
-const GROUND_WIDTH: f32 = 160.0;
-
-// ============================================================================
-// Layout
-// ============================================================================
-
-const CAP_STYLE_TUBE_OFFSET: f32 = 0.8;
-const CAP_STYLE_TUBE_SPACING: f32 = 2.0;
-const DRAGGABLE_CUBE_SIZE: f32 = 0.45;
-const HUB_SPHERE_RADIUS: f32 = 0.35;
-const NODE_CUBE_SIZE: f32 = 0.3;
-const NODE_Y: f32 = 2.0;
-const RAY_EPSILON: f32 = 1e-6;
-const SLACK_ADJUSTMENT_STEP: f32 = 0.01;
-const SECTION_COUNT: usize = 9;
-const SECTION_SPACING: f32 = 16.0;
-const SPAN_HALF_X: f32 = 3.0;
-
-const SECTION_X: [f32; SECTION_COUNT] = [
-    -4.0 * SECTION_SPACING,
-    -3.0 * SECTION_SPACING,
-    -2.0 * SECTION_SPACING,
-    -SECTION_SPACING,
-    0.0 * SECTION_SPACING,
-    1.0 * SECTION_SPACING,
-    2.0 * SECTION_SPACING,
-    3.0 * SECTION_SPACING,
-    4.0 * SECTION_SPACING,
-];
-
-const SECTION_TITLES: [&str; SECTION_COUNT] = [
-    "Simple Catenary",
-    "Cap Styles",
-    "Solver Comparison",
-    "Entity Attachment",
-    "Shared Hub",
-    "A* Routing",
-    "Detach Policy",
-    "Inside View",
-    "Connector Model",
-];
-
-// ============================================================================
-// Light
-// ============================================================================
-
-const DIRECTIONAL_LIGHT_ILLUMINANCE: f32 = 3000.0;
-const POINT_LIGHT_INTENSITY: f32 = 20000.0;
-const POINT_LIGHT_RANGE: f32 = 2.0;
-
-// ============================================================================
-// Tube mesh
-// ============================================================================
-
-const JOINT_RADIUS_MULTIPLIER: f32 = 1.5;
-const JOINT_SPHERE_SEGMENTS: u32 = 16;
-const TUBE_RADIUS: f32 = 0.06;
-const TUBE_SIDES: u32 = 32;
-
-// ============================================================================
-// UI
-// ============================================================================
-
-const NAV_FONT_SIZE: f32 = 16.0;
-const UI_FONT_SIZE: f32 = 14.0;
+use animation::LightAnimation;
+use animation::TubeLight;
+use constants::CABLE_COLOR;
+use constants::CAP_STYLE_RADIUS_MULTIPLIER;
+use constants::CAP_STYLE_TUBE_OFFSET;
+use constants::CAP_STYLE_TUBE_SPACING;
+use constants::DESPAWN_GREEN;
+use constants::DESPAWN_RED;
+use constants::DETACH_BUMP_BLUE;
+use constants::DIRECTIONAL_LIGHT_ILLUMINANCE;
+use constants::DRAGGABLE_COLOR;
+use constants::DRAGGABLE_CUBE_SIZE;
+use constants::GROUND_DEPTH;
+use constants::GROUND_WIDTH;
+use constants::HUB_SPHERE_RADIUS;
+use constants::INSIDE_VIEW_RADIUS_MULTIPLIER;
+use constants::JOINT_RADIUS_MULTIPLIER;
+use constants::JOINT_SPHERE_SEGMENTS;
+use constants::NAV_DURATION_MS;
+use constants::NAV_FONT_SIZE;
+use constants::NODE_COLOR;
+use constants::NODE_CUBE_SIZE;
+use constants::NODE_Y;
+use constants::OBSTACLE_COLOR;
+use constants::OBSTACLE_HALF_EXTENTS;
+use constants::POINT_LIGHT_COLOR;
+use constants::POINT_LIGHT_INTENSITY;
+use constants::POINT_LIGHT_RANGE;
+use constants::RAY_EPSILON;
+use constants::SECTION_COUNT;
+use constants::SECTION_TITLES;
+use constants::SECTION_X;
+use constants::SLACK_ADJUSTMENT_STEP;
+use constants::SLACK_NORMAL;
+use constants::SPAN_HALF_X;
+use constants::TRANSPARENT_TUBE_COLOR;
+use constants::TUBE_RADIUS;
+use constants::TUBE_SIDES;
+use constants::UI_FONT_SIZE;
+use constants::ZOOM_DURATION_MS;
+use constants::ZOOM_MARGIN_MESH;
+use constants::ZOOM_MARGIN_NAV;
 
 // ============================================================================
 // Components and resources
@@ -202,23 +147,6 @@ struct Despawnable;
 #[derive(Component)]
 struct DetachDemoEntity;
 
-/// Animates a point light along a tube's center axis, oscillating front to back.
-#[derive(Component)]
-struct TubeLight {
-    start: Vec3,
-    end:   Vec3,
-}
-
-/// Tracks play/pause state for tube light animation.
-#[derive(Resource, Default)]
-enum LightAnimation {
-    #[default]
-    Running,
-    Paused {
-        frozen_at: f32,
-    },
-}
-
 /// Marker to exclude a cable from global +/- slack adjustment.
 #[derive(Component)]
 struct SlackLocked;
@@ -247,6 +175,34 @@ struct RadiusMultiplier(f32);
 /// UI text that is only visible when viewing a specific section.
 #[derive(Component)]
 struct SectionInfo(usize);
+
+#[derive(Clone, Copy)]
+enum SlackAdjustment {
+    Increase,
+    Decrease,
+    None,
+}
+
+impl SlackAdjustment {
+    fn from_keyboard(keyboard: &ButtonInput<KeyCode>) -> Self {
+        match (
+            keyboard.pressed(KeyCode::Equal),
+            keyboard.pressed(KeyCode::Minus),
+        ) {
+            (true, false) => Self::Increase,
+            (false, true) => Self::Decrease,
+            _ => Self::None,
+        }
+    }
+
+    const fn delta(self) -> f32 {
+        match self {
+            Self::Increase => SLACK_ADJUSTMENT_STEP,
+            Self::Decrease => -SLACK_ADJUSTMENT_STEP,
+            Self::None => 0.0,
+        }
+    }
+}
 
 #[derive(Component)]
 struct NavLabel;
@@ -367,17 +323,17 @@ fn main() {
         .add_systems(
             Update,
             (
-                attach_click_to_cable_meshes,
                 update_current_section_from_camera,
                 update_section_info_visibility,
                 handle_keyboard,
                 handle_nav_buttons,
                 handle_drag,
                 sync_cable_settings.run_if(resource_changed::<CableSettings>),
-                align_connector_to_cable,
-                animate_tube_light,
+                animation::animate_tube_light,
             ),
         )
+        .add_observer(on_cable_mesh_child_added)
+        .add_observer(on_connector_geometry_updated)
         .run();
 }
 
@@ -386,7 +342,7 @@ fn main() {
 // ============================================================================
 
 fn setup_camera(mut commands: Commands) {
-    // Camera starts offset in front of section 0 so ZoomToFit gets a good angle
+    // Camera starts offset in front of section 0 so `ZoomToFit` gets a good angle.
     let focus = Vec3::new(SECTION_X[0], NODE_Y * 0.5, 0.0);
     let camera = commands
         .spawn(OrbitCam {
@@ -612,8 +568,6 @@ fn setup_section_catenary(
 /// Section 1: Three cables with different cap combinations — each end is freely choosable.
 /// Left: Round/Round, Middle: Round/Flat, Right: Round/None.
 /// The near end (facing the camera) varies to show that each end's cap is freely choosable.
-const CAP_STYLE_RADIUS_MULTIPLIER: f32 = 5.0;
-
 fn spawn_cap_style_tube(
     commands: &mut Commands,
     material: Handle<StandardMaterial>,
@@ -950,8 +904,6 @@ fn setup_section_astar(
         .observe(on_mesh_clicked);
 }
 
-const INSIDE_VIEW_RADIUS_MULTIPLIER: f32 = 25.0;
-
 /// Section 7: Inside view — large tube rendered inside-only.
 fn setup_section_inside_view(commands: &mut Commands, cable_mat: &Handle<StandardMaterial>) {
     let cx = SECTION_X[7];
@@ -1064,30 +1016,36 @@ fn setup_section_connector(
     }
 }
 
-/// Aligns connector models to their cable's end tangent when the geometry changes.
-fn align_connector_to_cable(
+/// Align connector models to their cable's end tangent when geometry is recomputed.
+fn on_connector_geometry_updated(
+    trigger: On<Insert, ComputedCableGeometry>,
+    cables: Query<&ComputedCableGeometry>,
     mut connectors: Query<(&ConnectorEnd, &mut Transform)>,
-    cables: Query<&ComputedCableGeometry, Changed<ComputedCableGeometry>>,
 ) {
-    for (connector, mut transform) in &mut connectors {
-        let Ok(computed) = cables.get(connector.cable) else {
-            continue;
-        };
-        let Some(geometry) = &computed.geometry else {
-            continue;
-        };
+    let cable = trigger.event_target();
+    let Ok(computed) = cables.get(cable) else {
+        return;
+    };
+    let Some(geometry) = &computed.geometry else {
+        return;
+    };
 
-        // Get the tangent at the relevant end
+    for (connector, mut transform) in &mut connectors {
+        if connector.cable != cable {
+            continue;
+        }
+
+        // Get the tangent at the relevant end.
         let tangent = match connector.end {
             CableEnd::End => {
-                // Last tangent of the last segment
+                // Last tangent of the last segment.
                 geometry
                     .segments
                     .last()
                     .and_then(|s| s.tangents.last().copied())
             },
             CableEnd::Start => {
-                // First tangent of the first segment
+                // First tangent of the first segment.
                 geometry
                     .segments
                     .first()
@@ -1105,7 +1063,7 @@ fn align_connector_to_cable(
         let direction = -tangent;
         let new_rotation = match connector.alignment {
             Alignment::Fixed => {
-                // Constrain up to world Y — no roll as cable sweeps around.
+                // Constrain up to world Y, so there is no roll as the cable sweeps around.
                 // `looking_to` orients -Z toward `direction`, so we rotate the
                 // result to map our model's +Y to that direction instead.
                 let look = Transform::IDENTITY.looking_to(direction, Vec3::Y);
@@ -1119,53 +1077,12 @@ fn align_connector_to_cable(
         };
 
         // Only write if the rotation actually changed to avoid a feedback loop:
-        // writing Transform → marks GlobalTransform changed → cable recomputes →
-        // geometry changes → this system fires again → infinite cycle.
+        // writing `Transform` marks `GlobalTransform` changed, then the cable recomputes,
+        // geometry changes, and this observer would otherwise fire again.
         let delta = transform.rotation.dot(new_rotation).abs();
         if delta < 0.9999 {
             transform.rotation = new_rotation;
         }
-    }
-}
-
-/// Oscillates a point light along a tube's center axis.
-/// 2s travel each direction, 0.5s pause at each end. Esc toggles pause.
-fn animate_tube_light(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut animation: ResMut<LightAnimation>,
-    mut lights: Query<(&TubeLight, &mut Transform)>,
-) {
-    if keyboard.just_pressed(KeyCode::Escape) {
-        *animation = match *animation {
-            LightAnimation::Running => LightAnimation::Paused {
-                frozen_at: time.elapsed_secs(),
-            },
-            LightAnimation::Paused { .. } => LightAnimation::Running,
-        };
-    }
-
-    let elapsed = match *animation {
-        LightAnimation::Paused { frozen_at } => frozen_at,
-        LightAnimation::Running => time.elapsed_secs(),
-    };
-
-    // 0.5s pause | 2s travel forward | 0.5s pause | 2s travel back = 5s cycle
-    let cycle = 5.0_f32;
-    let phase = elapsed % cycle;
-
-    let t = if phase < 0.5 {
-        0.0
-    } else if phase < 2.5 {
-        (phase - 0.5) / 2.0
-    } else if phase < 3.0 {
-        1.0
-    } else {
-        1.0 - (phase - 3.0) / 2.0
-    };
-
-    for (tube, mut transform) in &mut lights {
-        transform.translation = tube.start.lerp(tube.end, t);
     }
 }
 
@@ -1800,14 +1717,16 @@ fn update_current_section_from_camera(
     }
 }
 
-/// Attach click-to-zoom observer to cable mesh children spawned by the library.
-fn attach_click_to_cable_meshes(
+/// Attach click-to-zoom observers to cable mesh children spawned by the library.
+fn on_cable_mesh_child_added(
+    trigger: On<Insert, CableMeshChild>,
+    cables: Query<&CableMeshChild>,
     mut commands: Commands,
-    new_cables: Query<&CableMeshChild, Added<CableMeshChild>>,
 ) {
-    for mesh_child in &new_cables {
-        commands.entity(mesh_child.0).observe(on_mesh_clicked);
-    }
+    let Ok(mesh_child) = cables.get(trigger.event_target()) else {
+        return;
+    };
+    commands.entity(mesh_child.0).observe(on_mesh_clicked);
 }
 
 /// Sync `CableSettings` resource to each cable's `CableMeshConfig` when the inspector changes
@@ -1886,13 +1805,7 @@ fn handle_keyboard(
     }
 
     // +/-: Adjust catenary slack
-    let slack_delta = if keyboard.pressed(KeyCode::Equal) {
-        SLACK_ADJUSTMENT_STEP
-    } else if keyboard.pressed(KeyCode::Minus) {
-        -SLACK_ADJUSTMENT_STEP
-    } else {
-        0.0
-    };
+    let slack_delta = SlackAdjustment::from_keyboard(&keyboard).delta();
     if slack_delta != 0.0 {
         for mut cable in &mut cables {
             match &mut cable.solver {

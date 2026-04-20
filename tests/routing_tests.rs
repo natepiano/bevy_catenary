@@ -22,7 +22,6 @@ use bevy_catenary::Router;
 use bevy_catenary::evaluate;
 use bevy_catenary::sample_3d;
 use bevy_catenary::solve_parameter;
-use bevy_kana::Position;
 use bevy_kana::ToF32;
 
 const TOLERANCE: f32 = 0.01;
@@ -47,8 +46,8 @@ fn solve_parameter_converges_for_normal_case() {
     // Validate convergence through `sample_3d` which calls `solve_parameter` internally
     // with the correct horizontal/vertical decomposition. A moderate slack (1.3x chord)
     // produces a visible catenary sag, confirming Newton's method converged.
-    let start = Position::new(-2.0, 2.0, 0.0);
-    let end = Position::new(2.0, 2.0, 0.0);
+    let start = Vec3::new(-2.0, 2.0, 0.0);
+    let end = Vec3::new(2.0, 2.0, 0.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
 
     let segment = sample_3d(start, end, 1.3, gravity, 32);
@@ -65,8 +64,8 @@ fn solve_parameter_converges_for_normal_case() {
 #[test]
 fn solve_parameter_converges_for_asymmetric_endpoints() {
     // Asymmetric: endpoints at different heights, with enough slack for a catenary.
-    let start = Position::new(0.0, 5.0, 0.0);
-    let end = Position::new(6.0, 2.0, 0.0);
+    let start = Vec3::new(0.0, 5.0, 0.0);
+    let end = Vec3::new(6.0, 2.0, 0.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
 
     let segment = sample_3d(start, end, 1.4, gravity, 32);
@@ -116,8 +115,8 @@ fn solve_parameter_returns_none_when_cable_equals_straight_line() {
 
 #[test]
 fn sample_3d_returns_correct_number_of_points() {
-    let start = Position::new(-2.0, 2.0, 0.0);
-    let end = Position::new(2.0, 2.0, 0.0);
+    let start = Vec3::new(-2.0, 2.0, 0.0);
+    let end = Vec3::new(2.0, 2.0, 0.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
     let resolution = 20;
 
@@ -131,8 +130,8 @@ fn sample_3d_returns_correct_number_of_points() {
 
 #[test]
 fn sample_3d_endpoints_match_start_and_end() {
-    let start = Position::new(-3.0, 1.0, 0.0);
-    let end = Position::new(3.0, 1.0, 0.0);
+    let start = Vec3::new(-3.0, 1.0, 0.0);
+    let end = Vec3::new(3.0, 1.0, 0.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
 
     let segment = sample_3d(start, end, 1.3, gravity, 32);
@@ -146,8 +145,8 @@ fn sample_3d_endpoints_match_start_and_end() {
 
 #[test]
 fn sample_3d_slack_one_gives_nearly_straight_line() {
-    let start = Position::new(0.0, 5.0, 0.0);
-    let end = Position::new(4.0, 5.0, 0.0);
+    let start = Vec3::new(0.0, 5.0, 0.0);
+    let end = Vec3::new(4.0, 5.0, 0.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
 
     let segment = sample_3d(start, end, 1.0, gravity, 32);
@@ -159,7 +158,7 @@ fn sample_3d_slack_one_gives_nearly_straight_line() {
     for (i, point) in segment.points.iter().enumerate() {
         let t = i.to_f32() / (segment.points.len() - 1).to_f32();
         let expected = start.lerp(end, t);
-        let dist = point.distance(*expected);
+        let dist = point.distance(expected);
         assert!(
             dist < nearly_straight_tolerance,
             "point {i}: expected ~{expected:?}, got {point} (distance {dist})"
@@ -169,8 +168,8 @@ fn sample_3d_slack_one_gives_nearly_straight_line() {
 
 #[test]
 fn sample_3d_high_slack_produces_visible_sag() {
-    let start = Position::new(-3.0, 5.0, 0.0);
-    let end = Position::new(3.0, 5.0, 0.0);
+    let start = Vec3::new(-3.0, 5.0, 0.0);
+    let end = Vec3::new(3.0, 5.0, 0.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
 
     let segment = sample_3d(start, end, 1.5, gravity, 32);
@@ -189,8 +188,8 @@ fn sample_3d_high_slack_produces_visible_sag() {
 
 #[test]
 fn sample_3d_arc_lengths_are_monotonically_increasing() {
-    let start = Position::new(-2.0, 3.0, 1.0);
-    let end = Position::new(2.0, 1.0, -1.0);
+    let start = Vec3::new(-2.0, 3.0, 1.0);
+    let end = Vec3::new(2.0, 1.0, -1.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
 
     let segment = sample_3d(start, end, 1.3, gravity, 32);
@@ -208,8 +207,8 @@ fn sample_3d_arc_lengths_are_monotonically_increasing() {
 #[test]
 fn sample_3d_symmetric_sag_for_symmetric_endpoints() {
     // Start and end at same height, equidistant from origin along X.
-    let start = Position::new(-4.0, 3.0, 0.0);
-    let end = Position::new(4.0, 3.0, 0.0);
+    let start = Vec3::new(-4.0, 3.0, 0.0);
+    let end = Vec3::new(4.0, 3.0, 0.0);
     let gravity = Vec3::new(0.0, -1.0, 0.0);
 
     let segment = sample_3d(start, end, 1.4, gravity, 33);
@@ -345,8 +344,8 @@ fn cable_segment_from_points_empty() {
 #[test]
 fn direct_planner_returns_start_and_end() {
     let planner = DirectPlanner;
-    let start = Position::new(1.0, 2.0, 3.0);
-    let end = Position::new(4.0, 5.0, 6.0);
+    let start = Vec3::new(1.0, 2.0, 3.0);
+    let end = Vec3::new(4.0, 5.0, 6.0);
 
     let waypoints = planner.plan(start, end, &[]);
     assert_eq!(waypoints.len(), 2);
@@ -357,12 +356,9 @@ fn direct_planner_returns_start_and_end() {
 #[test]
 fn direct_planner_ignores_obstacles() {
     let planner = DirectPlanner;
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(10.0, 0.0, 0.0);
-    let obstacles = vec![Obstacle::new(
-        Vec3::splat(1.0),
-        Position::new(5.0, 0.0, 0.0),
-    )];
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(10.0, 0.0, 0.0);
+    let obstacles = vec![Obstacle::new(Vec3::splat(1.0), Vec3::new(5.0, 0.0, 0.0))];
 
     let waypoints = planner.plan(start, end, &obstacles);
     assert_eq!(
@@ -379,8 +375,8 @@ fn direct_planner_ignores_obstacles() {
 #[test]
 fn linear_solver_returns_correct_number_of_points() {
     let solver = LinearSolver;
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(5.0, 0.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(5.0, 0.0, 0.0);
     let resolution = 16;
 
     let segment = solver.solve_segment(start, end, resolution);
@@ -394,8 +390,8 @@ fn linear_solver_returns_correct_number_of_points() {
 #[test]
 fn linear_solver_produces_straight_line() {
     let solver = LinearSolver;
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(6.0, 0.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(6.0, 0.0, 0.0);
 
     let segment = solver.solve_segment(start, end, 10);
 
@@ -410,8 +406,8 @@ fn linear_solver_produces_straight_line() {
 fn linear_solver_as_route_solver() {
     let solver = LinearSolver;
     let request = RouteRequest {
-        start:      Position::new(0.0, 0.0, 0.0),
-        end:        Position::new(3.0, 4.0, 0.0),
+        start:      Vec3::new(0.0, 0.0, 0.0),
+        end:        Vec3::new(3.0, 4.0, 0.0),
         obstacles:  &[],
         resolution: 10,
     };
@@ -437,8 +433,8 @@ fn linear_solver_as_route_solver() {
 fn router_composes_planner_and_curve_solver() {
     let router = Router::new(DirectPlanner, LinearSolver);
     let request = RouteRequest {
-        start:      Position::new(0.0, 0.0, 0.0),
-        end:        Position::new(5.0, 0.0, 0.0),
+        start:      Vec3::new(0.0, 0.0, 0.0),
+        end:        Vec3::new(5.0, 0.0, 0.0),
         obstacles:  &[],
         resolution: 20,
     };
@@ -455,8 +451,8 @@ fn router_composes_planner_and_curve_solver() {
 fn router_with_catenary_solver() {
     let router = Router::new(DirectPlanner, CatenarySolver::new().with_slack(1.3));
     let request = RouteRequest {
-        start:      Position::new(-3.0, 2.0, 0.0),
-        end:        Position::new(3.0, 2.0, 0.0),
+        start:      Vec3::new(-3.0, 2.0, 0.0),
+        end:        Vec3::new(3.0, 2.0, 0.0),
         obstacles:  &[],
         resolution: 32,
     };
@@ -479,8 +475,8 @@ fn router_with_catenary_solver() {
 fn router_with_custom_resolution() {
     let router = Router::new(DirectPlanner, LinearSolver).with_resolution(64);
     let request = RouteRequest {
-        start:      Position::new(0.0, 0.0, 0.0),
-        end:        Position(Vec3::X * 5.0),
+        start:      Vec3::new(0.0, 0.0, 0.0),
+        end:        Vec3::X * 5.0,
         obstacles:  &[],
         resolution: 0, // use router's default
     };
@@ -500,8 +496,8 @@ fn router_with_custom_resolution() {
 #[test]
 fn catenary_solver_implements_curve_solver() {
     let solver = CatenarySolver::new().with_slack(1.2);
-    let start = Position::new(-2.0, 3.0, 0.0);
-    let end = Position::new(2.0, 3.0, 0.0);
+    let start = Vec3::new(-2.0, 3.0, 0.0);
+    let end = Vec3::new(2.0, 3.0, 0.0);
 
     let segment = solver.solve_segment(start, end, 16);
 
@@ -514,8 +510,8 @@ fn catenary_solver_implements_curve_solver() {
 fn catenary_solver_implements_route_solver() {
     let solver = CatenarySolver::new().with_slack(1.3);
     let request = RouteRequest {
-        start:      Position::new(-3.0, 5.0, 0.0),
-        end:        Position::new(3.0, 5.0, 0.0),
+        start:      Vec3::new(-3.0, 5.0, 0.0),
+        end:        Vec3::new(3.0, 5.0, 0.0),
         obstacles:  &[],
         resolution: 24,
     };
@@ -538,8 +534,8 @@ fn catenary_solver_custom_gravity() {
         .with_slack(1.3)
         .with_gravity(Vec3::new(0.0, 0.0, -9.81));
 
-    let start = Position::new(-3.0, 0.0, 5.0);
-    let end = Position::new(3.0, 0.0, 5.0);
+    let start = Vec3::new(-3.0, 0.0, 5.0);
+    let end = Vec3::new(3.0, 0.0, 5.0);
 
     let segment = solver.solve_segment(start, end, 32);
 
@@ -560,13 +556,13 @@ fn catenary_solver_custom_gravity() {
 fn astar_routes_around_single_obstacle() {
     let planner = AStarPlanner::new().with_grid_size(0.5).with_margin(0.2);
 
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(6.0, 0.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(6.0, 0.0, 0.0);
 
     // Place an obstacle directly in the path
     let obstacles = vec![Obstacle::new(
         Vec3::new(1.0, 1.0, 1.0),
-        Position::new(3.0, 0.0, 0.0),
+        Vec3::new(3.0, 0.0, 0.0),
     )];
 
     let waypoints = planner.plan(start, end, &obstacles);
@@ -586,8 +582,8 @@ fn astar_routes_around_single_obstacle() {
 #[test]
 fn astar_returns_direct_path_when_no_obstacles() {
     let planner = AStarPlanner::new();
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(5.0, 0.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(5.0, 0.0, 0.0);
 
     let waypoints = planner.plan(start, end, &[]);
 
@@ -603,14 +599,11 @@ fn astar_returns_direct_path_when_no_obstacles() {
 #[test]
 fn astar_returns_direct_path_when_obstacle_does_not_block() {
     let planner = AStarPlanner::new().with_grid_size(0.5);
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(5.0, 0.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(5.0, 0.0, 0.0);
 
     // Obstacle far off to the side, not blocking the direct path
-    let obstacles = vec![Obstacle::new(
-        Vec3::splat(0.5),
-        Position::new(2.5, 5.0, 5.0),
-    )];
+    let obstacles = vec![Obstacle::new(Vec3::splat(0.5), Vec3::new(2.5, 5.0, 5.0))];
 
     let waypoints = planner.plan(start, end, &obstacles);
 
@@ -630,13 +623,13 @@ fn astar_falls_back_to_direct_when_path_not_found() {
         max_cells: 5, // extremely limited search budget
     };
 
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(100.0, 0.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(100.0, 0.0, 0.0);
 
     // Large obstacle spanning a wide area
     let obstacles = vec![Obstacle::new(
         Vec3::new(50.0, 50.0, 50.0),
-        Position::new(50.0, 0.0, 0.0),
+        Vec3::new(50.0, 0.0, 0.0),
     )];
 
     let waypoints = planner.plan(start, end, &obstacles);
@@ -658,8 +651,8 @@ fn astar_falls_back_to_direct_when_path_not_found() {
 #[test]
 fn orthogonal_produces_axis_aligned_waypoints() {
     let planner = OrthogonalPlanner::new();
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(5.0, 3.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(5.0, 3.0, 0.0);
 
     let waypoints = planner.plan(start, end, &[]);
 
@@ -684,8 +677,8 @@ fn orthogonal_produces_axis_aligned_waypoints() {
 #[test]
 fn orthogonal_produces_horizontal_vertical_separated_waypoints_3d() {
     let planner = OrthogonalPlanner::new();
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(4.0, 3.0, 2.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(4.0, 3.0, 2.0);
 
     let waypoints = planner.plan(start, end, &[]);
 
@@ -708,8 +701,8 @@ fn orthogonal_produces_horizontal_vertical_separated_waypoints_3d() {
 #[test]
 fn orthogonal_vertical_first_starts_with_y_move() {
     let planner = OrthogonalPlanner::new().vertical_first();
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(5.0, 3.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(5.0, 3.0, 0.0);
 
     let waypoints = planner.plan(start, end, &[]);
 
@@ -733,13 +726,13 @@ fn orthogonal_vertical_first_starts_with_y_move() {
 #[test]
 fn orthogonal_routes_around_obstacle() {
     let planner = OrthogonalPlanner::new().with_margin(0.3);
-    let start = Position::new(0.0, 0.0, 0.0);
-    let end = Position::new(6.0, 0.0, 0.0);
+    let start = Vec3::new(0.0, 0.0, 0.0);
+    let end = Vec3::new(6.0, 0.0, 0.0);
 
     // Place obstacle blocking the direct L-path bend point
     let obstacles = vec![Obstacle::new(
         Vec3::new(2.0, 2.0, 2.0),
-        Position::new(3.0, 0.0, 0.0),
+        Vec3::new(3.0, 0.0, 0.0),
     )];
 
     let waypoints = planner.plan(start, end, &obstacles);
@@ -769,8 +762,8 @@ fn orthogonal_routes_around_obstacle() {
 #[test]
 fn orthogonal_endpoints_preserved() {
     let planner = OrthogonalPlanner::new();
-    let start = Position::new(1.0, 2.0, 3.0);
-    let end = Position::new(7.0, 5.0, 1.0);
+    let start = Vec3::new(1.0, 2.0, 3.0);
+    let end = Vec3::new(7.0, 5.0, 1.0);
 
     let waypoints = planner.plan(start, end, &[]);
 
@@ -789,8 +782,8 @@ fn cable_geometry_all_points_iterates_across_segments() {
     // Build geometry with multiple segments via an orthogonal planner + linear solver
     let router = Router::new(OrthogonalPlanner::new(), solver);
     let request = RouteRequest {
-        start:      Position::new(0.0, 0.0, 0.0),
-        end:        Position::new(5.0, 3.0, 0.0),
+        start:      Vec3::new(0.0, 0.0, 0.0),
+        end:        Vec3::new(5.0, 3.0, 0.0),
         obstacles:  &[],
         resolution: 10,
     };
@@ -811,8 +804,8 @@ fn cable_geometry_total_length_is_sum_of_segments() {
     let solver = LinearSolver;
     let router = Router::new(OrthogonalPlanner::new(), solver);
     let request = RouteRequest {
-        start:      Position::new(0.0, 0.0, 0.0),
-        end:        Position::new(4.0, 3.0, 0.0),
+        start:      Vec3::new(0.0, 0.0, 0.0),
+        end:        Vec3::new(4.0, 3.0, 0.0),
         obstacles:  &[],
         resolution: 10,
     };
@@ -833,7 +826,7 @@ fn cable_geometry_total_length_is_sum_of_segments() {
 
 #[test]
 fn obstacle_aabb_bounds_are_correct() {
-    let obs = Obstacle::new(Vec3::new(1.0, 2.0, 3.0), Position::new(10.0, 20.0, 30.0));
+    let obs = Obstacle::new(Vec3::new(1.0, 2.0, 3.0), Vec3::new(10.0, 20.0, 30.0));
     let min = obs.aabb_min();
     let max = obs.aabb_max();
 
@@ -843,14 +836,14 @@ fn obstacle_aabb_bounds_are_correct() {
 
 #[test]
 fn anchor_constructors() {
-    let a = Anchor::new(Position::new(1.0, 2.0, 3.0));
+    let a = Anchor::new(Vec3::new(1.0, 2.0, 3.0));
     assert_vec3_approx(a.position, Vec3::new(1.0, 2.0, 3.0), "anchor position");
     assert!(
         a.direction.is_none(),
         "default anchor should have no direction"
     );
 
-    let b = Anchor::with_direction(Position::new(0.0, 0.0, 0.0), Vec3::Y);
+    let b = Anchor::with_direction(Vec3::new(0.0, 0.0, 0.0), Vec3::Y);
     assert!(
         b.direction.is_some(),
         "directed anchor should have a direction"
@@ -871,12 +864,12 @@ fn full_pipeline_astar_catenary() {
 
     let obstacles = vec![Obstacle::new(
         Vec3::new(1.0, 1.0, 1.0),
-        Position::new(3.0, 0.0, 0.0),
+        Vec3::new(3.0, 0.0, 0.0),
     )];
 
     let request = RouteRequest {
-        start:      Position::new(0.0, 0.0, 0.0),
-        end:        Position::new(6.0, 0.0, 0.0),
+        start:      Vec3::new(0.0, 0.0, 0.0),
+        end:        Vec3::new(6.0, 0.0, 0.0),
         obstacles:  &obstacles,
         resolution: 16,
     };
@@ -903,8 +896,8 @@ fn full_pipeline_orthogonal_linear() {
     let router = Router::new(OrthogonalPlanner::new(), LinearSolver);
 
     let request = RouteRequest {
-        start:      Position::new(0.0, 0.0, 0.0),
-        end:        Position::new(5.0, 3.0, 0.0),
+        start:      Vec3::new(0.0, 0.0, 0.0),
+        end:        Vec3::new(5.0, 3.0, 0.0),
         obstacles:  &[],
         resolution: 10,
     };

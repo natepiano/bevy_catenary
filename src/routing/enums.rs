@@ -5,7 +5,6 @@
 
 use bevy::math::Vec3;
 use bevy::reflect::Reflect;
-use bevy_kana::Position;
 
 use super::catenary::CatenarySolver;
 use super::constants::DEFAULT_RESOLUTION;
@@ -81,7 +80,7 @@ impl Solver {
 
                 let segments: Vec<CableSegment> = waypoints
                     .windows(2)
-                    .map(|pair| curve.solve_segment(Position(pair[0]), Position(pair[1]), res))
+                    .map(|pair| curve.solve_segment(pair[0], pair[1], res))
                     .collect();
 
                 CableGeometry::from_segments(segments, waypoints)
@@ -92,7 +91,7 @@ impl Solver {
 
 impl PathStrategy {
     /// Find waypoints from `start` to `end`, routing around `obstacles`.
-    fn plan(&self, start: Position, end: Position, obstacles: &[Obstacle]) -> Vec<Vec3> {
+    fn plan(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> Vec<Vec3> {
         match self {
             Self::Direct => DirectPlanner.plan(start, end, obstacles),
             Self::Orthogonal => OrthogonalPlanner::new().plan(start, end, obstacles),
@@ -103,7 +102,7 @@ impl PathStrategy {
 
 impl CurveKind {
     /// Generate a curve segment between two waypoints.
-    fn solve_segment(&self, start: Position, end: Position, resolution: u32) -> CableSegment {
+    fn solve_segment(&self, start: Vec3, end: Vec3, resolution: u32) -> CableSegment {
         match self {
             Self::Catenary(catenary) => catenary.solve_segment(start, end, resolution),
             Self::Linear => LinearSolver.solve_segment(start, end, resolution),

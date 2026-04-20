@@ -1,7 +1,6 @@
 //! Bevy systems for cable route computation and debug rendering.
 
 use bevy::prelude::*;
-use bevy_kana::Position;
 
 use super::components::AttachedTo;
 use super::components::Cable;
@@ -124,9 +123,9 @@ pub(super) fn compute_cable_routes(
         }
 
         let request = RouteRequest {
-            start:      Position(start),
-            end:        Position(end),
-            obstacles:  &cable.obstacles,
+            start,
+            end,
+            obstacles: &cable.obstacles,
             resolution: cable.resolution,
         };
 
@@ -251,8 +250,7 @@ pub(super) fn on_geometry_computed(
         return;
     };
     let cable_entity = trigger.event_target();
-    let Ok((computed, config, children, mesh_handle, _mesh_child)) = cables.get(cable_entity)
-    else {
+    let Ok((computed, config, children, mesh_handle, _)) = cables.get(cable_entity) else {
         return;
     };
 
