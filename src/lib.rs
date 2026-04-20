@@ -8,7 +8,7 @@
 //!
 //! The crate is split into two layers:
 //! - [`routing`] — Pure math module (depends only on `glam`). Produces [`CableGeometry`].
-//! - [`plugin`] — Thin Bevy integration. Consumes [`CableGeometry`] for rendering.
+//! - Bevy integration layer — consumes [`CableGeometry`] for rendering.
 //!
 //! # Quick Start
 //!
@@ -36,33 +36,37 @@
 //! }
 //! ```
 
-mod plugin;
+mod cable;
+mod gizmos;
+mod mesh;
 mod routing;
 
-// Bevy plugin
-pub use plugin::AttachedEndpoints;
-pub use plugin::AttachedTo;
-pub use plugin::Cable;
-pub use plugin::CableEnd;
-pub use plugin::CableEndpoint;
-pub use plugin::CableGizmoGroup;
-pub use plugin::CableMeshChild;
-pub use plugin::CableMeshConfig;
-pub use plugin::CableMeshHandle;
-pub use plugin::CapConfig;
-pub use plugin::Capping;
-pub use plugin::CatenaryPlugin;
-pub use plugin::ComputedCableGeometry;
-pub use plugin::DebugGizmos;
-pub use plugin::ElbowConfig;
-pub use plugin::ElbowMetadata;
-pub use plugin::EndpointAlignment;
-pub use plugin::FaceSides;
-pub use plugin::OnDetach;
-pub use plugin::TrimConfig;
-pub use plugin::TubeConfig;
-pub use plugin::compute_elbow_metadata;
-pub use plugin::generate_tube_mesh;
+use bevy::prelude::*;
+// Cable
+pub use cable::AttachedEndpoints;
+pub use cable::AttachedTo;
+pub use cable::Cable;
+pub use cable::CableEnd;
+pub use cable::CableEndpoint;
+pub use cable::ComputedCableGeometry;
+pub use cable::EndpointAlignment;
+pub use cable::OnDetach;
+// Gizmos
+pub use gizmos::CableGizmoGroup;
+pub use gizmos::DebugGizmos;
+// Mesh
+pub use mesh::CableMeshChild;
+pub use mesh::CableMeshConfig;
+pub use mesh::CableMeshHandle;
+pub use mesh::CapConfig;
+pub use mesh::Capping;
+pub use mesh::ElbowConfig;
+pub use mesh::ElbowMetadata;
+pub use mesh::FaceSides;
+pub use mesh::TrimConfig;
+pub use mesh::TubeConfig;
+pub use mesh::compute_elbow_metadata;
+pub use mesh::generate_tube_mesh;
 // Routing
 pub use routing::AStarPlanner;
 pub use routing::Anchor;
@@ -88,3 +92,19 @@ pub use routing::Solver;
 pub use routing::evaluate;
 pub use routing::sample_3d;
 pub use routing::solve_parameter;
+
+/// Plugin that adds cable routing support to a Bevy app.
+///
+/// Registers:
+/// - [`DebugGizmos`] resource (default: off).
+/// - [`CableGizmoGroup`] for controlling debug visibility.
+/// - Cable route computation system (runs in `Update`).
+/// - Gizmo debug renderer (runs in `Update` after computation).
+/// - Observers for mesh regeneration, endpoint alignment, and detach handling.
+pub struct CatenaryPlugin;
+
+impl Plugin for CatenaryPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((cable::CablePlugin, mesh::MeshPlugin, gizmos::GizmosPlugin));
+    }
+}

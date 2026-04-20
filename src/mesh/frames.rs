@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::plugin::constants::PERPENDICULAR_AXIS_THRESHOLD;
+use super::constants::PERPENDICULAR_AXIS_THRESHOLD;
 
 /// Compute rotation-minimizing frames (parallel transport) along a curve.
 pub(super) fn compute_rmf(points: &[Vec3], tangents: &[Vec3]) -> Vec<(Vec3, Vec3)> {

@@ -9,7 +9,7 @@ use super::buffers::WindingOrder;
 use super::config::CableMeshConfig;
 use super::config::Capping;
 use super::config::FaceSides;
-use crate::plugin::constants::MIN_CAP_RINGS;
+use super::constants::MIN_CAP_RINGS;
 
 /// Which side of a cap to generate.
 #[derive(Clone, Copy, Debug)]

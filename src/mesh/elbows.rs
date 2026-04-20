@@ -3,8 +3,8 @@ use bevy_kana::ToF32;
 use bevy_kana::ToU32;
 
 use super::config::CableMeshConfig;
+use super::constants::MAX_ARM_RATIO;
 use super::path;
-use crate::plugin::constants::MAX_ARM_RATIO;
 use crate::routing::CableGeometry;
 
 /// Resolve elbow arm lengths from per-elbow overrides or the global multiplier.

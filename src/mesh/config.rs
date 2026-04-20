@@ -1,12 +1,12 @@
 use bevy::prelude::*;
 
-use crate::plugin::constants::DEFAULT_ARM_MULTIPLIER;
-use crate::plugin::constants::DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG;
-use crate::plugin::constants::DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER;
-use crate::plugin::constants::DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE;
-use crate::plugin::constants::DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER;
-use crate::plugin::constants::DEFAULT_TUBE_RADIUS;
-use crate::plugin::constants::DEFAULT_TUBE_SIDES;
+use super::constants::DEFAULT_ARM_MULTIPLIER;
+use super::constants::DEFAULT_ELBOW_ANGLE_THRESHOLD_DEG;
+use super::constants::DEFAULT_ELBOW_BEND_RADIUS_MULTIPLIER;
+use super::constants::DEFAULT_ELBOW_RINGS_PER_RIGHT_ANGLE;
+use super::constants::DEFAULT_MIN_ELBOW_RADIUS_MULTIPLIER;
+use super::constants::DEFAULT_TUBE_RADIUS;
+use super::constants::DEFAULT_TUBE_SIDES;
 
 /// How to cap each end of a tube mesh.
 ///
