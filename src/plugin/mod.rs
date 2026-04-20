@@ -19,6 +19,7 @@ pub use components::Cable;
 pub use components::CableEnd;
 pub use components::CableEndpoint;
 pub use components::ComputedCableGeometry;
+pub use components::EndpointAlignment;
 pub use components::OnDetach;
 pub use mesh::CableMeshConfig;
 pub use mesh::CapConfig;
@@ -58,6 +59,7 @@ impl Plugin for CatenaryPlugin {
                     .chain(),
             )
             .add_observer(systems::on_endpoint_detached)
+            .add_observer(systems::on_endpoint_alignment_update)
             .add_observer(systems::on_geometry_computed);
     }
 }

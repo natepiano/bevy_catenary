@@ -2,11 +2,32 @@ use bevy::prelude::*;
 use bevy_kana::ToF32;
 use bevy_kana::ToU32;
 
-use super::config;
 use super::config::CableMeshConfig;
 use super::path;
 use crate::plugin::constants::MAX_ARM_RATIO;
 use crate::routing::CableGeometry;
+
+/// Resolve elbow arm lengths from per-elbow overrides or the global multiplier.
+fn resolve_elbow_arms(
+    config: &CableMeshConfig,
+    elbow_idx: usize,
+    p0: Vec3,
+    p3: Vec3,
+    max_arm: f32,
+) -> (f32, f32) {
+    config
+        .elbow
+        .arm_overrides
+        .as_ref()
+        .and_then(|overrides| overrides.get(elbow_idx))
+        .map_or_else(
+            || {
+                let arm = (p0.distance(p3) / 3.0 * config.elbow.arm_multiplier).min(max_arm);
+                (arm, arm)
+            },
+            |&(a1, a2)| (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm)),
+        )
+}
 
 /// Metadata about a single elbow fillet, for visualization and interactive editing.
 #[derive(Clone, Debug)]
@@ -74,8 +95,7 @@ fn compute_elbow_at_corner(
     let p0 = corner - dir_in * fillet_reach;
     let p3 = corner + dir_out * fillet_reach;
     let max_arm = fillet_reach * MAX_ARM_RATIO;
-    let (control1_arm, control2_arm) =
-        config::resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
+    let (control1_arm, control2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
     let p1 = p0 + dir_in * control1_arm;
     let p2 = p3 - dir_out * control2_arm;
 

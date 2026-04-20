@@ -56,6 +56,7 @@ pub use plugin::ComputedCableGeometry;
 pub use plugin::DebugGizmos;
 pub use plugin::ElbowConfig;
 pub use plugin::ElbowMetadata;
+pub use plugin::EndpointAlignment;
 pub use plugin::FaceSides;
 pub use plugin::OnDetach;
 pub use plugin::TrimConfig;

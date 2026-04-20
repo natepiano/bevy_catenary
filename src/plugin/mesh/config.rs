@@ -145,25 +145,3 @@ impl Default for ElbowConfig {
         }
     }
 }
-
-/// Resolve elbow arm lengths from per-elbow overrides or the global multiplier.
-pub(super) fn resolve_elbow_arms(
-    config: &CableMeshConfig,
-    elbow_idx: usize,
-    p0: Vec3,
-    p3: Vec3,
-    max_arm: f32,
-) -> (f32, f32) {
-    config
-        .elbow
-        .arm_overrides
-        .as_ref()
-        .and_then(|overrides| overrides.get(elbow_idx))
-        .map_or_else(
-            || {
-                let arm = (p0.distance(p3) / 3.0 * config.elbow.arm_multiplier).min(max_arm);
-                (arm, arm)
-            },
-            |&(a1, a2)| (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm)),
-        )
-}

@@ -34,10 +34,13 @@ pub struct CableEndpoint {
     pub cap_style:     Capping,
     /// What happens when the target entity is despawned.
     pub detach_policy: OnDetach,
+    /// How the endpoint's [`AttachedTo`] target rotates to follow the cable's tangent.
+    pub alignment:     EndpointAlignment,
 }
 
 impl CableEndpoint {
-    /// Create a new endpoint with default cap style (`Round`) and detach policy (`Remain`).
+    /// Create a new endpoint with default cap style (`Round`), detach policy (`Remain`),
+    /// and alignment (`AsSpawned`).
     #[must_use]
     pub const fn new(end: CableEnd, offset: Vec3) -> Self {
         Self {
@@ -45,6 +48,7 @@ impl CableEndpoint {
             offset,
             cap_style: Capping::Round,
             detach_policy: OnDetach::Remain,
+            alignment: EndpointAlignment::AsSpawned,
         }
     }
 
@@ -61,6 +65,32 @@ impl CableEndpoint {
         self.detach_policy = policy;
         self
     }
+
+    /// Set the alignment mode for this endpoint's attached target.
+    #[must_use]
+    pub const fn with_alignment(mut self, alignment: EndpointAlignment) -> Self {
+        self.alignment = alignment;
+        self
+    }
+}
+
+/// How the [`AttachedTo`] target of a [`CableEndpoint`] rotates to follow the cable's
+/// tangent at that endpoint.
+///
+/// Assumes the target's `+Y` axis is its "cable-exit" axis (matches Bevy's GLTF import
+/// convention). Models with a different local axis should wrap in a parent entity.
+#[derive(Clone, Copy, Debug, Default, Reflect)]
+pub enum EndpointAlignment {
+    /// The target's rotation is not touched. It stays in whatever orientation it
+    /// was spawned with.
+    #[default]
+    AsSpawned,
+    /// Orient the target's `+Y` axis along the cable's tangent at this endpoint,
+    /// constrained to world-`Y` up so the target never rolls as the cable sweeps.
+    Fixed,
+    /// Orient the target's `+Y` axis along the cable's tangent via shortest-arc
+    /// rotation — the target rolls with the cable's natural twist.
+    Rotating,
 }
 
 /// What happens when an endpoint's target entity is despawned.

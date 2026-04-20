@@ -7,6 +7,7 @@ use super::components::Cable;
 use super::components::CableEnd;
 use super::components::CableEndpoint;
 use super::components::ComputedCableGeometry;
+use super::components::EndpointAlignment;
 use super::components::OnDetach;
 use super::constants::CABLE_GIZMO_COLOR;
 use super::constants::SEGMENT_BOUNDARY_COLOR;
@@ -293,6 +294,74 @@ pub(super) fn on_geometry_computed(
         commands
             .entity(cable_entity)
             .insert((CableMeshHandle(handle), CableMeshChild(child)));
+    }
+}
+
+/// Align the [`AttachedTo`] target of each [`CableEndpoint`] to the cable's tangent
+/// per the endpoint's [`EndpointAlignment`].
+///
+/// Fires every time a cable's [`ComputedCableGeometry`] is (re)inserted, which the
+/// library re-inserts on each recompute.
+pub(super) fn on_endpoint_alignment_update(
+    trigger: On<Insert, ComputedCableGeometry>,
+    cables: Query<(&ComputedCableGeometry, &Children)>,
+    endpoints: Query<(&CableEndpoint, &AttachedTo)>,
+    mut targets: Query<&mut Transform>,
+) {
+    let cable = trigger.event_target();
+    let Ok((computed, children)) = cables.get(cable) else {
+        return;
+    };
+    let Some(geometry) = &computed.geometry else {
+        return;
+    };
+
+    for child in children.iter() {
+        let Ok((endpoint, attached)) = endpoints.get(child) else {
+            continue;
+        };
+        let Ok(mut transform) = targets.get_mut(attached.0) else {
+            continue;
+        };
+
+        // Tangent at this endpoint's end of the geometry.
+        let tangent = match endpoint.end {
+            CableEnd::Start => geometry
+                .segments
+                .first()
+                .and_then(|s| s.tangents.first().copied()),
+            CableEnd::End => geometry
+                .segments
+                .last()
+                .and_then(|s| s.tangents.last().copied()),
+        };
+        let Some(tangent) = tangent else {
+            continue;
+        };
+
+        // Cable-exit axis convention: target's +Y faces "outward" from the cable.
+        // Negate so the cable enters from the target's -Y side.
+        let direction = -tangent;
+
+        let new_rotation = match endpoint.alignment {
+            EndpointAlignment::AsSpawned => continue,
+            EndpointAlignment::Fixed => {
+                // `looking_to` orients -Z toward `direction` with Y up, so no roll.
+                // Rotate -90° around X to remap the model's +Y to that -Z direction.
+                let look = Transform::IDENTITY.looking_to(direction, Vec3::Y);
+                look.rotation * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+            },
+            EndpointAlignment::Rotating => Quat::from_rotation_arc(Vec3::Y, direction),
+        };
+
+        // Feedback-loop guard: writing `Transform` marks `GlobalTransform` dirty, which
+        // re-triggers cable recomputation. Without this guard, each update would write a
+        // rotation that redirties `GlobalTransform`, forming an infinite cycle of
+        // geometry → alignment → geometry.
+        let delta = transform.rotation.dot(new_rotation).abs();
+        if delta < 0.9999 {
+            transform.rotation = new_rotation;
+        }
     }
 }
 

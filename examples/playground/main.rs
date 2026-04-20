@@ -39,6 +39,7 @@ use bevy_catenary::ComputedCableGeometry;
 use bevy_catenary::CurveKind;
 use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::DebugGizmos;
+use bevy_catenary::EndpointAlignment;
 use bevy_catenary::FaceSides;
 use bevy_catenary::Obstacle;
 use bevy_catenary::OnDetach;
@@ -150,22 +151,6 @@ struct DetachDemoEntity;
 /// Marker to exclude a cable from global +/- slack adjustment.
 #[derive(Component)]
 struct SlackLocked;
-
-/// How a connector model aligns to the cable tangent.
-enum Alignment {
-    /// Maintains a consistent up direction — no roll as the cable sweeps around.
-    Fixed,
-    /// Follows the cable's rotation-minimizing frame — rolls with the cable's twist.
-    Rotating,
-}
-
-/// Links a connector model to its cable entity and which end it represents.
-#[derive(Component)]
-struct ConnectorEnd {
-    cable:     Entity,
-    end:       CableEnd,
-    alignment: Alignment,
-}
 
 /// Marker for cables with a radius multiplier relative to the inspector setting.
 /// The `sync_cable_settings` system applies `radius * multiplier` instead of raw radius.
@@ -333,7 +318,6 @@ fn main() {
             ),
         )
         .add_observer(on_cable_mesh_child_added)
-        .add_observer(on_connector_geometry_updated)
         .run();
 }
 
@@ -963,17 +947,23 @@ fn setup_section_connector(
     let cx = SECTION_X[8];
     let plug_scene: Handle<Scene> = asset_server.load("models/power_plug.glb#Scene0");
 
-    // Two cables side by side: left is Fixed (no roll), right is Rotating (follows twist).
+    // Three cables side by side: front is Fixed (no roll), middle is AsSpawned (plug keeps
+    // its spawn orientation), back is Rotating (follows twist).
     let configs = [
         (
             Vec3::new(cx - SPAN_HALF_X, NODE_Y, 1.5),
             Vec3::new(cx + SPAN_HALF_X, NODE_Y, 1.5),
-            Alignment::Fixed,
+            EndpointAlignment::Fixed,
+        ),
+        (
+            Vec3::new(cx - SPAN_HALF_X, NODE_Y, 0.0),
+            Vec3::new(cx + SPAN_HALF_X, NODE_Y, 0.0),
+            EndpointAlignment::AsSpawned,
         ),
         (
             Vec3::new(cx - SPAN_HALF_X, NODE_Y, -1.5),
             Vec3::new(cx + SPAN_HALF_X, NODE_Y, -1.5),
-            Alignment::Rotating,
+            EndpointAlignment::Rotating,
         ),
     ];
 
@@ -997,11 +987,6 @@ fn setup_section_connector(
                 SceneRoot(plug_scene.clone()),
                 Transform::from_translation(end).with_scale(Vec3::splat(15.0)),
                 Draggable,
-                ConnectorEnd {
-                    cable,
-                    end: CableEnd::End,
-                    alignment,
-                },
             ))
             .observe(on_drag_start)
             .id();
@@ -1009,80 +994,12 @@ fn setup_section_connector(
         commands.entity(cable).with_children(|parent| {
             parent.spawn(CableEndpoint::new(CableEnd::Start, start));
             parent.spawn((
-                CableEndpoint::new(CableEnd::End, Vec3::ZERO).with_cap(Capping::None),
+                CableEndpoint::new(CableEnd::End, Vec3::ZERO)
+                    .with_cap(Capping::None)
+                    .with_alignment(alignment),
                 AttachedTo(plug),
             ));
         });
-    }
-}
-
-/// Align connector models to their cable's end tangent when geometry is recomputed.
-fn on_connector_geometry_updated(
-    trigger: On<Insert, ComputedCableGeometry>,
-    cables: Query<&ComputedCableGeometry>,
-    mut connectors: Query<(&ConnectorEnd, &mut Transform)>,
-) {
-    let cable = trigger.event_target();
-    let Ok(computed) = cables.get(cable) else {
-        return;
-    };
-    let Some(geometry) = &computed.geometry else {
-        return;
-    };
-
-    for (connector, mut transform) in &mut connectors {
-        if connector.cable != cable {
-            continue;
-        }
-
-        // Get the tangent at the relevant end.
-        let tangent = match connector.end {
-            CableEnd::End => {
-                // Last tangent of the last segment.
-                geometry
-                    .segments
-                    .last()
-                    .and_then(|s| s.tangents.last().copied())
-            },
-            CableEnd::Start => {
-                // First tangent of the first segment.
-                geometry
-                    .segments
-                    .first()
-                    .and_then(|s| s.tangents.first().copied())
-            },
-        };
-
-        let Some(tangent) = tangent else {
-            continue;
-        };
-
-        // The plug model's cable-exit axis is +Y in Bevy (after GLTF import).
-        // The tangent points along the cable's direction of travel, so negate it
-        // so the cable exit faces back into the cable and the prongs face outward.
-        let direction = -tangent;
-        let new_rotation = match connector.alignment {
-            Alignment::Fixed => {
-                // Constrain up to world Y, so there is no roll as the cable sweeps around.
-                // `looking_to` orients -Z toward `direction`, so we rotate the
-                // result to map our model's +Y to that direction instead.
-                let look = Transform::IDENTITY.looking_to(direction, Vec3::Y);
-                // Remap: model +Y → look -Z. That's a 90° rotation around X.
-                look.rotation * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
-            },
-            Alignment::Rotating => {
-                // Unconstrained rotation — follows the cable's natural twist.
-                Quat::from_rotation_arc(Vec3::Y, direction)
-            },
-        };
-
-        // Only write if the rotation actually changed to avoid a feedback loop:
-        // writing `Transform` marks `GlobalTransform` changed, then the cable recomputes,
-        // geometry changes, and this observer would otherwise fire again.
-        let delta = transform.rotation.dot(new_rotation).abs();
-        if delta < 0.9999 {
-            transform.rotation = new_rotation;
-        }
     }
 }
 
@@ -1226,7 +1143,7 @@ fn spawn_section_infos(commands: &mut Commands, camera: Entity) {
         (7, "Look, it's a tube!"),
         (
             8,
-            "Front: Fixed (no roll)\nBack: Rotating (follows twist)\nDrag the plugs to compare",
+            "Front: Fixed (no roll)\nMiddle: AsSpawned (plug keeps its spawn orientation)\nBack: Rotating (follows twist)\nDrag the plugs to compare",
         ),
     ];
 
