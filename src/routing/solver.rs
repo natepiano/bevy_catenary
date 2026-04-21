@@ -11,10 +11,10 @@ use bevy::math::Vec3;
 use bevy_kana::ToUsize;
 
 use super::constants::DEFAULT_RESOLUTION;
-use super::types::CableGeometry;
-use super::types::CableSegment;
-use super::types::Obstacle;
-use super::types::RouteRequest;
+use super::geometry::CableGeometry;
+use super::geometry::CableSegment;
+use super::geometry::RouteRequest;
+use super::obstacle::Obstacle;
 
 /// The primary routing trait. Produces complete cable geometry from a route request.
 ///

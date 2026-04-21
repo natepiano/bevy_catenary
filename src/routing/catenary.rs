@@ -26,11 +26,11 @@ use super::constants::NEAR_TAUT_INITIAL_GUESS_MULTIPLIER;
 use super::constants::NEAR_ZERO_GRAVITY_THRESHOLD;
 use super::constants::NEWTON_TOLERANCE;
 use super::constants::STRAIGHT_LINE_THRESHOLD;
+use super::geometry::CableGeometry;
+use super::geometry::CableSegment;
+use super::geometry::RouteRequest;
 use super::solver::CurveSolver;
 use super::solver::RouteSolver;
-use super::types::CableGeometry;
-use super::types::CableSegment;
-use super::types::RouteRequest;
 
 /// Evaluate the catenary function: `a * cosh(x / a)`.
 #[must_use]

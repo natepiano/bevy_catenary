@@ -24,41 +24,39 @@ use bevy_lagrange::OrbitCam;
 use bevy_lagrange::TrackpadBehavior;
 use bevy_lagrange::TrackpadInput;
 
-use crate::animation::TubeLight;
-use crate::connector;
-use crate::constants::CABLE_COLOR;
-use crate::constants::CAP_STYLE_RADIUS_MULTIPLIER;
-use crate::constants::CAP_STYLE_TUBE_OFFSET;
-use crate::constants::CAP_STYLE_TUBE_SPACING;
-use crate::constants::DIRECTIONAL_LIGHT_ILLUMINANCE;
-use crate::constants::DRAGGABLE_COLOR;
-use crate::constants::DRAGGABLE_CUBE_SIZE;
-use crate::constants::GROUND_DEPTH;
-use crate::constants::GROUND_WIDTH;
-use crate::constants::HUB_SPHERE_RADIUS;
-use crate::constants::INSIDE_VIEW_RADIUS_MULTIPLIER;
-use crate::constants::NODE_COLOR;
-use crate::constants::NODE_CUBE_SIZE;
-use crate::constants::NODE_Y;
-use crate::constants::OBSTACLE_COLOR;
-use crate::constants::OBSTACLE_HALF_EXTENTS;
-use crate::constants::POINT_LIGHT_COLOR;
-use crate::constants::POINT_LIGHT_INTENSITY;
-use crate::constants::POINT_LIGHT_RANGE;
-use crate::constants::SECTION_X;
-use crate::constants::SLACK_NORMAL;
-use crate::constants::SPAN_HALF_X;
-use crate::constants::TRANSPARENT_TUBE_COLOR;
-use crate::constants::TUBE_RADIUS;
-use crate::detach_demo;
-use crate::entities;
-use crate::entities::Draggable;
-use crate::entities::NodeCube;
-use crate::input::on_drag_start;
-use crate::input::on_ground_clicked;
-use crate::input::on_mesh_clicked;
-use crate::sections;
-use crate::sections::SectionBounds;
+use super::animation::TubeLight;
+use super::connector;
+use super::constants::CABLE_COLOR;
+use super::constants::CAP_STYLE_RADIUS_MULTIPLIER;
+use super::constants::CAP_STYLE_TUBE_OFFSET;
+use super::constants::CAP_STYLE_TUBE_SPACING;
+use super::constants::DIRECTIONAL_LIGHT_ILLUMINANCE;
+use super::constants::DRAGGABLE_COLOR;
+use super::constants::DRAGGABLE_CUBE_SIZE;
+use super::constants::GROUND_DEPTH;
+use super::constants::GROUND_WIDTH;
+use super::constants::HUB_SPHERE_RADIUS;
+use super::constants::INSIDE_VIEW_RADIUS_MULTIPLIER;
+use super::constants::NODE_COLOR;
+use super::constants::NODE_CUBE_SIZE;
+use super::constants::NODE_Y;
+use super::constants::OBSTACLE_COLOR;
+use super::constants::OBSTACLE_HALF_EXTENTS;
+use super::constants::POINT_LIGHT_COLOR;
+use super::constants::POINT_LIGHT_INTENSITY;
+use super::constants::POINT_LIGHT_RANGE;
+use super::constants::SECTION_X;
+use super::constants::SLACK_NORMAL;
+use super::constants::SPAN_HALF_X;
+use super::constants::TRANSPARENT_TUBE_COLOR;
+use super::constants::TUBE_RADIUS;
+use super::detach_demo;
+use super::entities;
+use super::entities::Draggable;
+use super::entities::NodeCube;
+use super::input;
+use super::sections;
+use super::sections::SectionBounds;
 
 #[derive(Resource)]
 pub(crate) struct SceneEntities {
@@ -132,7 +130,7 @@ pub(crate) fn setup_scene(
                 ..default()
             })),
         ))
-        .observe(on_ground_clicked)
+        .observe(input::on_ground_clicked)
         .id();
     scene.ground = ground;
 
@@ -474,7 +472,7 @@ fn setup_section_entity_attachment(
             Draggable,
             NodeCube,
         ))
-        .observe(on_drag_start)
+        .observe(input::on_drag_start)
         .id();
 
     let right_cube = commands
@@ -485,7 +483,7 @@ fn setup_section_entity_attachment(
             Draggable,
             NodeCube,
         ))
-        .observe(on_drag_start)
+        .observe(input::on_drag_start)
         .id();
 
     commands
@@ -536,7 +534,7 @@ fn setup_section_shared_hub(
             Draggable,
             NodeCube,
         ))
-        .observe(on_drag_start)
+        .observe(input::on_drag_start)
         .id();
 
     let spokes = [
@@ -613,7 +611,7 @@ fn setup_section_astar(
             Transform::from_translation(*obstacle_pos),
             NotShadowCaster,
         ))
-        .observe(on_mesh_clicked);
+        .observe(input::on_mesh_clicked);
 }
 
 /// Section 7: Inside view — large tube rendered inside-only.

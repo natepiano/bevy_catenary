@@ -7,14 +7,14 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy_lagrange::ZoomToFit;
 
-use crate::constants::NAV_DURATION_MS;
-use crate::constants::NAV_FONT_SIZE;
-use crate::constants::SECTION_COUNT;
-use crate::constants::SECTION_TITLES;
-use crate::constants::ZOOM_MARGIN_NAV;
-use crate::scene::SceneEntities;
-use crate::sections::CurrentSection;
-use crate::sections::SectionBounds;
+use super::constants::NAV_DURATION_MS;
+use super::constants::NAV_FONT_SIZE;
+use super::constants::SECTION_COUNT;
+use super::constants::SECTION_TITLES;
+use super::constants::ZOOM_MARGIN_NAV;
+use super::scene::SceneEntities;
+use super::sections::CurrentSection;
+use super::sections::SectionBounds;
 
 #[derive(Component)]
 pub(crate) struct NavLabel;

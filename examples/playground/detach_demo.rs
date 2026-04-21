@@ -10,16 +10,16 @@ use bevy_catenary::CatenarySolver;
 use bevy_catenary::OnDetach;
 use bevy_catenary::Solver;
 
-use crate::constants::DESPAWN_GREEN;
-use crate::constants::DESPAWN_RED;
-use crate::constants::DETACH_BUMP_BLUE;
-use crate::constants::HUB_SPHERE_RADIUS;
-use crate::constants::NODE_Y;
-use crate::constants::SECTION_X;
-use crate::constants::SLACK_NORMAL;
-use crate::entities;
-use crate::entities::Despawnable;
-use crate::input::on_despawnable_clicked;
+use super::constants::DESPAWN_GREEN;
+use super::constants::DESPAWN_RED;
+use super::constants::DETACH_BUMP_BLUE;
+use super::constants::HUB_SPHERE_RADIUS;
+use super::constants::NODE_Y;
+use super::constants::SECTION_X;
+use super::constants::SLACK_NORMAL;
+use super::entities;
+use super::entities::Despawnable;
+use super::input;
 
 /// Marker for entities belonging to the detach demo section (for reset).
 #[derive(Component)]
@@ -102,7 +102,7 @@ fn spawn_detach_demo_row(
             Despawnable,
             DetachDemoEntity,
         ))
-        .observe(on_despawnable_clicked)
+        .observe(input::on_despawnable_clicked)
         .id();
 
     let anchor_pos = Vec3::new(cx + 2.0, NODE_Y, row.z);

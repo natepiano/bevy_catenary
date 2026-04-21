@@ -4,9 +4,9 @@ use bevy::math::Vec3;
 
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
 use super::constants::ORTHOGONAL_SEGMENT_SAMPLE_STEPS;
+use super::obstacle;
+use super::obstacle::Obstacle;
 use super::solver::PathPlanner;
-use super::types;
-use super::types::Obstacle;
 
 /// Whether to route vertically or horizontally first.
 #[derive(Clone, Debug, Default)]
@@ -65,7 +65,7 @@ impl OrthogonalPlanner {
 
     /// Check if an axis-aligned segment between two points is blocked.
     fn is_segment_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_segment_blocked(
+        obstacle::is_segment_blocked(
             start,
             end,
             obstacles,

@@ -213,6 +213,7 @@ pub(super) fn on_endpoint_detached(
     )>,
     mut cables: Query<&mut Cable>,
     mut commands: Commands,
+    mut dirty_cables: ResMut<super::DirtyCables>,
 ) {
     let endpoint_entity = trigger.event_target();
     let Ok((mut endpoint, child_of, resolved_endpoint_position)) =
@@ -228,6 +229,8 @@ pub(super) fn on_endpoint_detached(
             if let Ok(mut cable) = cables.get_mut(child_of.parent()) {
                 apply_solver_detach_response(&mut cable.solver);
             }
+
+            dirty_cables.0.insert(child_of.parent());
         },
         OnDetach::Despawn => {
             let cable_entity = child_of.parent();

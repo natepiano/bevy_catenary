@@ -13,9 +13,9 @@ use super::constants::COLLINEARITY_THRESHOLD;
 use super::constants::DEFAULT_ASTAR_MAX_CELLS;
 use super::constants::DEFAULT_GRID_SIZE;
 use super::constants::DEFAULT_OBSTACLE_MARGIN;
+use super::obstacle;
+use super::obstacle::Obstacle;
 use super::solver::PathPlanner;
-use super::types;
-use super::types::Obstacle;
 
 /// 3D grid cell coordinate.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -120,7 +120,7 @@ impl AStarPlanner {
 
     /// Check if a world-space point is inside any obstacle (with margin).
     fn is_blocked(&self, pos: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_point_in_any_obstacle(pos, obstacles, self.margin)
+        obstacle::is_point_in_any_obstacle(pos, obstacles, self.margin)
     }
 
     /// 26-connected neighbors (all adjacent cells including diagonals).
@@ -256,7 +256,7 @@ impl PathPlanner for AStarPlanner {
 impl AStarPlanner {
     /// Check if any obstacle intersects the direct line from start to end.
     fn is_direct_path_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
-        types::is_segment_blocked(
+        obstacle::is_segment_blocked(
             start,
             end,
             obstacles,

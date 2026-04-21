@@ -59,8 +59,8 @@ struct ElbowParams {
     min_bend_radius:     f32,
 }
 
-impl ElbowParams {
-    fn from_config(config: &CableMeshConfig) -> Self {
+impl From<&CableMeshConfig> for ElbowParams {
+    fn from(config: &CableMeshConfig) -> Self {
         let tube_radius = config.tube.radius;
         Self {
             angle_threshold_cos: config.elbow.angle_threshold_deg.to_radians().cos(),
@@ -124,7 +124,7 @@ pub(super) fn insert_knee_rings(
         return (points, tangents, arc_lengths);
     }
 
-    let params = ElbowParams::from_config(config);
+    let params = ElbowParams::from(config);
     let rings_per_right_angle = config.elbow.rings_per_right_angle;
     let mut output_points = Vec::with_capacity(point_count * 2);
     let mut output_arc_lengths = Vec::with_capacity(point_count * 2);
@@ -240,7 +240,7 @@ pub fn compute_elbow_metadata(
         );
     }
 
-    let params = ElbowParams::from_config(config);
+    let params = ElbowParams::from(config);
     let mut elbows = Vec::new();
     let mut elbow_idx = 0_usize;
 

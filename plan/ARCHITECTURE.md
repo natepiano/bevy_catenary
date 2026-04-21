@@ -42,7 +42,8 @@ src/
 │
 ├── routing/                   # Pure math — no Bevy dependency
 │   ├── mod.rs                 # mod + pub use
-│   ├── types.rs               # Obstacle, CableGeometry, CableSegment, RouteRequest
+│   ├── obstacle.rs            # Obstacle AABB + is_point_in_any_obstacle / is_segment_blocked
+│   ├── geometry.rs            # Anchor, RouteRequest, CableSegment, CableGeometry
 │   ├── constants.rs           # Named constants (no magic values)
 │   ├── enums.rs               # Solver, Planner, Curve enum dispatch
 │   ├── solver.rs              # RouteSolver/CurveSolver/PathPlanner traits, Router compositor

@@ -10,10 +10,11 @@ mod constants;
     reason = "false positive on enum variant fields"
 )]
 mod enums;
+mod geometry;
+mod obstacle;
 mod orthogonal;
 mod pathfinding;
 mod solver;
-mod types;
 
 pub use catenary::CatenarySolver;
 pub use catenary::evaluate;
@@ -26,6 +27,11 @@ pub use constants::MIN_SEGMENT_LENGTH;
 pub use enums::CurveKind;
 pub use enums::PathStrategy;
 pub use enums::Solver;
+pub use geometry::Anchor;
+pub use geometry::CableGeometry;
+pub use geometry::CableSegment;
+pub use geometry::RouteRequest;
+pub use obstacle::Obstacle;
 pub use orthogonal::AxisOrder;
 pub use orthogonal::OrthogonalPlanner;
 pub use pathfinding::AStarPlanner;
@@ -35,8 +41,3 @@ pub use solver::LinearSolver;
 pub use solver::PathPlanner;
 pub use solver::RouteSolver;
 pub use solver::Router;
-pub use types::Anchor;
-pub use types::CableGeometry;
-pub use types::CableSegment;
-pub use types::Obstacle;
-pub use types::RouteRequest;

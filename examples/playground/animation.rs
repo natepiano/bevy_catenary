@@ -28,21 +28,23 @@ enum LightTravelPhase {
 }
 
 impl LightTravelPhase {
-    fn from_phase(phase: f32) -> Self {
-        match phase {
-            phase if phase < 0.5 => Self::HoldStart,
-            phase if phase < 2.5 => Self::MoveForward,
-            phase if phase < 3.0 => Self::HoldEnd,
-            _ => Self::MoveBackward,
-        }
-    }
-
     fn sample_position(self, phase: f32) -> f32 {
         match self {
             Self::HoldStart => 0.0,
             Self::MoveForward => (phase - 0.5) / 2.0,
             Self::HoldEnd => 1.0,
             Self::MoveBackward => 1.0 - (phase - 3.0) / 2.0,
+        }
+    }
+}
+
+impl From<f32> for LightTravelPhase {
+    fn from(phase: f32) -> Self {
+        match phase {
+            phase if phase < 0.5 => Self::HoldStart,
+            phase if phase < 2.5 => Self::MoveForward,
+            phase if phase < 3.0 => Self::HoldEnd,
+            _ => Self::MoveBackward,
         }
     }
 }
@@ -73,7 +75,7 @@ pub(crate) fn animate_tube_light(
     let cycle = 5.0_f32;
     let phase = elapsed % cycle;
 
-    let light_phase = LightTravelPhase::from_phase(phase);
+    let light_phase = LightTravelPhase::from(phase);
     let t = light_phase.sample_position(phase);
 
     for (tube, mut transform) in &mut lights {

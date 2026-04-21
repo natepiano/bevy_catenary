@@ -8,14 +8,15 @@ use bevy_catenary::ComputedCableGeometry;
 use bevy_inspector_egui::inspector_options::std_options::NumberDisplay;
 use bevy_inspector_egui::prelude::*;
 
-use crate::constants::JOINT_RADIUS_MULTIPLIER;
-use crate::constants::JOINT_SPHERE_SEGMENTS;
-use crate::constants::TUBE_RADIUS;
-use crate::constants::TUBE_SIDES;
-use crate::constants::UI_FONT_SIZE;
-use crate::scene::RadiusMultiplier;
-use crate::scene::SceneEntities;
-use crate::sections::SectionInfo;
+use super::constants::JOINT_RADIUS_MULTIPLIER;
+use super::constants::JOINT_SPHERE_SEGMENTS;
+use super::constants::TUBE_RADIUS;
+use super::constants::TUBE_SIDES;
+use super::constants::UI_FONT_SIZE;
+use super::navigation;
+use super::scene::RadiusMultiplier;
+use super::scene::SceneEntities;
+use super::sections::SectionInfo;
 
 #[derive(Default, Resource)]
 pub(crate) enum InspectorVisibility {
@@ -90,7 +91,7 @@ impl Default for CableSettings {
 pub(crate) fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
     spawn_help_text(&mut commands, scene.camera);
     spawn_keyboard_shortcuts(&mut commands, scene.camera);
-    crate::navigation::spawn_nav_bar(&mut commands, scene.camera);
+    navigation::spawn_nav_bar(&mut commands, scene.camera);
     spawn_section_infos(&mut commands, scene.camera);
 }
 

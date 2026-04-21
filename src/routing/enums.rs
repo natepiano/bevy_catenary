@@ -8,6 +8,10 @@ use bevy::reflect::Reflect;
 
 use super::catenary::CatenarySolver;
 use super::constants::DEFAULT_RESOLUTION;
+use super::geometry::CableGeometry;
+use super::geometry::CableSegment;
+use super::geometry::RouteRequest;
+use super::obstacle::Obstacle;
 use super::orthogonal::OrthogonalPlanner;
 use super::pathfinding::AStarPlanner;
 use super::solver::CurveSolver;
@@ -15,10 +19,6 @@ use super::solver::DirectPlanner;
 use super::solver::LinearSolver;
 use super::solver::PathPlanner;
 use super::solver::RouteSolver;
-use super::types::CableGeometry;
-use super::types::CableSegment;
-use super::types::Obstacle;
-use super::types::RouteRequest;
 
 /// Top-level solver selection for a cable.
 #[derive(Clone, Debug, Reflect)]
@@ -76,11 +76,11 @@ impl Solver {
                 } else {
                     DEFAULT_RESOLUTION
                 };
-                let res = request.effective_resolution(default_res);
+                let resolution = request.effective_resolution(default_res);
 
                 let segments: Vec<CableSegment> = waypoints
                     .windows(2)
-                    .map(|pair| curve.solve_segment(pair[0], pair[1], res))
+                    .map(|pair| curve.solve_segment(pair[0], pair[1], resolution))
                     .collect();
 
                 CableGeometry::from_segments(segments, waypoints)

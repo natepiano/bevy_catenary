@@ -11,25 +11,25 @@ use bevy_catenary::DebugGizmos;
 use bevy_catenary::Solver;
 use bevy_lagrange::ZoomToFit;
 
-use crate::constants::NAV_DURATION_MS;
-use crate::constants::RAY_EPSILON;
-use crate::constants::SLACK_ADJUSTMENT_STEP;
-use crate::constants::ZOOM_DURATION_MS;
-use crate::constants::ZOOM_MARGIN_MESH;
-use crate::constants::ZOOM_MARGIN_NAV;
-use crate::detach_demo;
-use crate::detach_demo::DetachDemoEntity;
-use crate::entities;
-use crate::entities::Despawnable;
-use crate::entities::Draggable;
-use crate::entities::NodeCube;
-use crate::entities::Selected;
-use crate::entities::SlackLocked;
-use crate::scene::SceneEntities;
-use crate::scene::SharedCableMaterial;
-use crate::sections::CurrentSection;
-use crate::sections::SectionBounds;
-use crate::ui::InspectorVisibility;
+use super::constants::NAV_DURATION_MS;
+use super::constants::RAY_EPSILON;
+use super::constants::SLACK_ADJUSTMENT_STEP;
+use super::constants::ZOOM_DURATION_MS;
+use super::constants::ZOOM_MARGIN_MESH;
+use super::constants::ZOOM_MARGIN_NAV;
+use super::detach_demo;
+use super::detach_demo::DetachDemoEntity;
+use super::entities;
+use super::entities::Despawnable;
+use super::entities::Draggable;
+use super::entities::NodeCube;
+use super::entities::Selected;
+use super::entities::SlackLocked;
+use super::scene::SceneEntities;
+use super::scene::SharedCableMaterial;
+use super::sections::CurrentSection;
+use super::sections::SectionBounds;
+use super::ui::InspectorVisibility;
 
 #[derive(Resource, Default)]
 pub(crate) struct DragState {
@@ -47,7 +47,17 @@ enum SlackAdjustment {
 }
 
 impl SlackAdjustment {
-    fn from_keyboard(keyboard: &ButtonInput<KeyCode>) -> Self {
+    const fn delta(self) -> f32 {
+        match self {
+            Self::Increase => SLACK_ADJUSTMENT_STEP,
+            Self::Decrease => -SLACK_ADJUSTMENT_STEP,
+            Self::None => 0.0,
+        }
+    }
+}
+
+impl From<&ButtonInput<KeyCode>> for SlackAdjustment {
+    fn from(keyboard: &ButtonInput<KeyCode>) -> Self {
         match (
             keyboard.pressed(KeyCode::Equal),
             keyboard.pressed(KeyCode::Minus),
@@ -55,14 +65,6 @@ impl SlackAdjustment {
             (true, false) => Self::Increase,
             (false, true) => Self::Decrease,
             _ => Self::None,
-        }
-    }
-
-    const fn delta(self) -> f32 {
-        match self {
-            Self::Increase => SLACK_ADJUSTMENT_STEP,
-            Self::Decrease => -SLACK_ADJUSTMENT_STEP,
-            Self::None => 0.0,
         }
     }
 }
@@ -207,7 +209,7 @@ pub(crate) fn handle_keyboard(
         );
     }
 
-    let slack_delta = SlackAdjustment::from_keyboard(&keyboard).delta();
+    let slack_delta = SlackAdjustment::from(keyboard.as_ref()).delta();
     if slack_delta != 0.0 {
         for mut cable in &mut cables {
             match &mut cable.solver {

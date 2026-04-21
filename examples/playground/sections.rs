@@ -4,11 +4,11 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy_lagrange::OrbitCam;
 
-use crate::constants::NODE_Y;
-use crate::constants::SECTION_X;
-use crate::constants::SPAN_HALF_X;
-use crate::navigation;
-use crate::navigation::NavLabel;
+use super::constants::NODE_Y;
+use super::constants::SECTION_X;
+use super::constants::SPAN_HALF_X;
+use super::navigation;
+use super::navigation::NavLabel;
 
 #[derive(Resource)]
 pub(crate) struct CurrentSection(pub(crate) usize);

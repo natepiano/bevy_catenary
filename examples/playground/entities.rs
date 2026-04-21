@@ -9,7 +9,7 @@ use bevy_catenary::CableMeshConfig;
 use bevy_catenary::Obstacle;
 use bevy_catenary::Solver;
 
-use crate::input::on_mesh_clicked;
+use super::input;
 
 #[derive(Component)]
 pub(crate) struct Selected;
@@ -77,7 +77,7 @@ pub(crate) fn spawn_node_cube<'a>(
         Transform::from_translation(pos),
         NodeCube,
     ));
-    ec.observe(on_mesh_clicked);
+    ec.observe(input::on_mesh_clicked);
     ec
 }
 

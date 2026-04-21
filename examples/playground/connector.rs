@@ -10,11 +10,11 @@ use bevy_catenary::Capping;
 use bevy_catenary::EndpointAlignment;
 use bevy_catenary::Solver;
 
-use crate::constants::NODE_Y;
-use crate::constants::SECTION_X;
-use crate::constants::SPAN_HALF_X;
-use crate::entities::Draggable;
-use crate::input::on_drag_start;
+use super::constants::NODE_Y;
+use super::constants::SECTION_X;
+use super::constants::SPAN_HALF_X;
+use super::entities::Draggable;
+use super::input;
 
 /// # Connector model origin convention
 ///
@@ -78,7 +78,7 @@ pub(crate) fn setup_section_connector(
                 Transform::from_translation(end).with_scale(Vec3::splat(15.0)),
                 Draggable,
             ))
-            .observe(on_drag_start)
+            .observe(input::on_drag_start)
             .id();
 
         commands.entity(cable).with_children(|parent| {
