@@ -36,7 +36,7 @@ struct DetachDemoRow {
     z:            f32,
     sphere_color: Color,
     solver:       CatenarySolver,
-    policy:       OnDetach,
+    on_detach:    OnDetach,
 }
 
 pub(crate) fn spawn_detach_demo(
@@ -60,7 +60,7 @@ pub(crate) fn spawn_detach_demo(
             z:            -1.5,
             sphere_color: DESPAWN_GREEN,
             solver:       CatenarySolver::new().with_slack(SLACK_NORMAL),
-            policy:       OnDetach::Remain,
+            on_detach:    OnDetach::Remain,
         },
         DetachDemoRow {
             z:            0.0,
@@ -68,13 +68,13 @@ pub(crate) fn spawn_detach_demo(
             solver:       CatenarySolver::new()
                 .with_slack(SLACK_NORMAL)
                 .with_detach_slack_bump(0.35),
-            policy:       OnDetach::Remain,
+            on_detach:    OnDetach::Remain,
         },
         DetachDemoRow {
             z:            1.5,
             sphere_color: DESPAWN_RED,
             solver:       CatenarySolver::new().with_slack(SLACK_NORMAL),
-            policy:       OnDetach::Despawn,
+            on_detach:    OnDetach::Despawn,
         },
     ];
 
@@ -124,7 +124,7 @@ fn spawn_detach_demo_row(
         ))
         .with_children(|parent| {
             parent.spawn((
-                CableEndpoint::new(CableEnd::Start, Vec3::ZERO).with_detach_policy(row.policy),
+                CableEndpoint::new(CableEnd::Start, Vec3::ZERO).with_detach_policy(row.on_detach),
                 AttachedTo(sphere),
             ));
             parent.spawn(CableEndpoint::new(CableEnd::End, anchor_pos));

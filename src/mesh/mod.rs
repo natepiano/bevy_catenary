@@ -2,10 +2,6 @@
 
 mod buffers;
 mod caps;
-#[allow(
-    clippy::used_underscore_binding,
-    reason = "false positive on Reflect derive for Capping::Flat { normal }"
-)]
 mod config;
 mod constants;
 mod elbows;

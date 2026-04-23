@@ -1,3 +1,8 @@
+#![allow(
+    clippy::used_underscore_binding,
+    reason = "false positive on Reflect derive for Capping::Flat { normal }"
+)]
+
 use bevy::prelude::*;
 
 use super::constants::DEFAULT_ARM_MULTIPLIER;

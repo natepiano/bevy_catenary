@@ -57,7 +57,7 @@ pub(crate) fn setup_section_connector(
         ),
     ];
 
-    for (start, end, alignment) in configs {
+    for (start, end, endpoint_alignment) in configs {
         let cable = commands
             .spawn((
                 Cable {
@@ -86,7 +86,7 @@ pub(crate) fn setup_section_connector(
             parent.spawn((
                 CableEndpoint::new(CableEnd::End, Vec3::ZERO)
                     .with_cap(Capping::None)
-                    .with_alignment(alignment),
+                    .with_alignment(endpoint_alignment),
                 AttachedTo(plug),
             ));
         });

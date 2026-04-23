@@ -1,3 +1,8 @@
+#![allow(
+    clippy::used_underscore_binding,
+    reason = "false positive on enum variant fields"
+)]
+
 //! Enum-based solver selection for cables.
 //!
 //! Replaces `Box<dyn RouteSolver>` with concrete enums that support `Clone`, `Reflect`,

@@ -88,11 +88,11 @@ impl Default for CableSettings {
     }
 }
 
-pub(crate) fn setup_ui(mut commands: Commands, scene: Res<SceneEntities>) {
-    spawn_help_text(&mut commands, scene.camera);
-    spawn_keyboard_shortcuts(&mut commands, scene.camera);
-    navigation::spawn_nav_bar(&mut commands, scene.camera);
-    spawn_section_infos(&mut commands, scene.camera);
+pub(crate) fn setup_ui(mut commands: Commands, scene_entities: Res<SceneEntities>) {
+    spawn_help_text(&mut commands, scene_entities.camera);
+    spawn_keyboard_shortcuts(&mut commands, scene_entities.camera);
+    navigation::spawn_nav_bar(&mut commands, scene_entities.camera);
+    spawn_section_infos(&mut commands, scene_entities.camera);
 }
 
 fn spawn_section_infos(commands: &mut Commands, camera: Entity) {

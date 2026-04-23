@@ -32,13 +32,13 @@ pub(crate) fn navigate_to_section(
     commands: &mut Commands,
     section: usize,
     current: &mut ResMut<CurrentSection>,
-    scene: &Res<SceneEntities>,
+    scene_entities: &Res<SceneEntities>,
     bounds: &Res<SectionBounds>,
     label_query: &mut Query<&mut Text, With<NavLabel>>,
 ) {
     current.0 = section;
     commands.trigger(
-        ZoomToFit::new(scene.camera, bounds.0[section])
+        ZoomToFit::new(scene_entities.camera, bounds.0[section])
             .margin(ZOOM_MARGIN_NAV)
             .duration(Duration::from_millis(NAV_DURATION_MS))
             .easing(EaseFunction::CubicInOut),
@@ -60,7 +60,7 @@ pub(crate) fn handle_nav_buttons(
     interactions: Query<(&Interaction, &NavButton), Changed<Interaction>>,
     mut commands: Commands,
     mut current: ResMut<CurrentSection>,
-    scene: Res<SceneEntities>,
+    scene_entities: Res<SceneEntities>,
     bounds: Res<SectionBounds>,
     mut label_query: Query<&mut Text, With<NavLabel>>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -110,7 +110,7 @@ pub(crate) fn handle_nav_buttons(
             &mut commands,
             section,
             &mut current,
-            &scene,
+            &scene_entities,
             &bounds,
             &mut label_query,
         );

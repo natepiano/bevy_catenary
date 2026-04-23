@@ -1,0 +1,140 @@
+use bevy::light::NotShadowCaster;
+use bevy::prelude::*;
+use bevy_catenary::Cable;
+use bevy_catenary::CableEnd;
+use bevy_catenary::CableEndpoint;
+use bevy_catenary::CableMeshConfig;
+use bevy_catenary::Capping;
+use bevy_catenary::FaceSides;
+use bevy_catenary::Solver;
+use bevy_catenary::TubeConfig;
+
+use super::super::animation::TubeLight;
+use super::super::constants::CAP_STYLE_RADIUS_MULTIPLIER;
+use super::super::constants::CAP_STYLE_TUBE_OFFSET;
+use super::super::constants::CAP_STYLE_TUBE_SPACING;
+use super::super::constants::NODE_Y;
+use super::super::constants::POINT_LIGHT_COLOR;
+use super::super::constants::POINT_LIGHT_INTENSITY;
+use super::super::constants::POINT_LIGHT_RANGE;
+use super::super::constants::SECTION_X;
+use super::super::constants::TRANSPARENT_TUBE_COLOR;
+use super::super::constants::TUBE_RADIUS;
+use super::RadiusMultiplier;
+
+/// Section 1: Three cables with different cap combinations — each end is freely choosable.
+/// Left: Round/Round, Middle: Round/Flat, Right: Round/None.
+pub(super) fn setup_section_cap_styles(
+    commands: &mut Commands,
+    materials: &mut Assets<StandardMaterial>,
+    cable_mat: &Handle<StandardMaterial>,
+) {
+    let cx = SECTION_X[1];
+
+    let transparent_mat = materials.add(StandardMaterial {
+        base_color: TRANSPARENT_TUBE_COLOR,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+
+    let left_start = Vec3::new(
+        2.0f32.mul_add(-CAP_STYLE_TUBE_SPACING, cx),
+        NODE_Y,
+        -CAP_STYLE_TUBE_OFFSET,
+    );
+    let left_end = Vec3::new(cx - CAP_STYLE_TUBE_SPACING, NODE_Y, CAP_STYLE_TUBE_OFFSET);
+    spawn_cap_style_tube(
+        commands,
+        transparent_mat,
+        left_start,
+        left_end,
+        Capping::Round,
+        Capping::Round,
+    );
+
+    let mid_start = Vec3::new(
+        cx - CAP_STYLE_TUBE_SPACING / 2.0,
+        NODE_Y,
+        -CAP_STYLE_TUBE_OFFSET,
+    );
+    let mid_end = Vec3::new(
+        cx + CAP_STYLE_TUBE_SPACING / 2.0,
+        NODE_Y,
+        CAP_STYLE_TUBE_OFFSET,
+    );
+    spawn_cap_style_tube(
+        commands,
+        cable_mat.clone(),
+        mid_start,
+        mid_end,
+        Capping::None,
+        Capping::flat(),
+    );
+
+    let right_start = Vec3::new(cx + CAP_STYLE_TUBE_SPACING, NODE_Y, -CAP_STYLE_TUBE_OFFSET);
+    let right_end = Vec3::new(
+        2.0f32.mul_add(CAP_STYLE_TUBE_SPACING, cx),
+        NODE_Y,
+        CAP_STYLE_TUBE_OFFSET,
+    );
+    spawn_cap_style_tube(
+        commands,
+        cable_mat.clone(),
+        right_start,
+        right_end,
+        Capping::Round,
+        Capping::None,
+    );
+
+    let tubes = [
+        (left_start, left_end, 0.3),
+        (mid_start, mid_end, 0.7),
+        (right_start, right_end, 0.0),
+    ];
+    for (start, end, initial_t) in tubes {
+        commands.spawn((
+            PointLight {
+                color: POINT_LIGHT_COLOR,
+                intensity: POINT_LIGHT_INTENSITY,
+                range: POINT_LIGHT_RANGE,
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(start.lerp(end, initial_t)),
+            NotShadowCaster,
+            TubeLight { start, end },
+        ));
+    }
+}
+
+fn spawn_cap_style_tube(
+    commands: &mut Commands,
+    material: Handle<StandardMaterial>,
+    start: Vec3,
+    end: Vec3,
+    start_cap: Capping,
+    end_cap: Capping,
+) {
+    commands
+        .spawn((
+            Cable {
+                solver:     Solver::Linear,
+                obstacles:  vec![],
+                resolution: 0,
+            },
+            CableMeshConfig {
+                tube: TubeConfig {
+                    radius: TUBE_RADIUS * CAP_STYLE_RADIUS_MULTIPLIER,
+                    faces: FaceSides::Both,
+                    ..default()
+                },
+                material: Some(material),
+                ..default()
+            },
+            RadiusMultiplier(CAP_STYLE_RADIUS_MULTIPLIER),
+        ))
+        .with_children(|parent| {
+            parent.spawn(CableEndpoint::new(CableEnd::Start, start).with_cap(start_cap));
+            parent.spawn(CableEndpoint::new(CableEnd::End, end).with_cap(end_cap));
+        });
+}

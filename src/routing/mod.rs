@@ -5,10 +5,6 @@
 
 mod catenary;
 mod constants;
-#[allow(
-    clippy::used_underscore_binding,
-    reason = "false positive on enum variant fields"
-)]
 mod enums;
 mod geometry;
 mod obstacle;

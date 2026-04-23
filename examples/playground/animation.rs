@@ -28,7 +28,7 @@ enum LightTravelPhase {
 }
 
 impl LightTravelPhase {
-    fn sample_position(self, phase: f32) -> f32 {
+    const fn sample_position(self, phase: f32) -> f32 {
         match self {
             Self::HoldStart => 0.0,
             Self::MoveForward => (phase - 0.5) / 2.0,

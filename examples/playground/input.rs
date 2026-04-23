@@ -174,7 +174,7 @@ pub(crate) fn handle_keyboard(
     mut commands: Commands,
     mut debug_enabled: ResMut<DebugGizmos>,
     mut inspector_visible: ResMut<InspectorVisibility>,
-    scene: Res<SceneEntities>,
+    scene_entities: Res<SceneEntities>,
     mut cables: Query<&mut Cable, Without<SlackLocked>>,
     shared_cable_mat: Res<SharedCableMaterial>,
     detach_entities: Query<Entity, With<DetachDemoEntity>>,
@@ -202,7 +202,7 @@ pub(crate) fn handle_keyboard(
 
     if keyboard.just_pressed(KeyCode::KeyF) {
         commands.trigger(
-            ZoomToFit::new(scene.camera, scene.ground)
+            ZoomToFit::new(scene_entities.camera, scene_entities.ground)
                 .margin(0.05)
                 .duration(Duration::from_millis(NAV_DURATION_MS))
                 .easing(EaseFunction::CubicOut),
@@ -268,14 +268,14 @@ pub(crate) fn on_ground_clicked(
     _click: On<Pointer<Click>>,
     mut commands: Commands,
     selected: Query<Entity, With<Selected>>,
-    scene: Res<SceneEntities>,
+    scene_entities: Res<SceneEntities>,
     bounds: Res<SectionBounds>,
     current: Res<CurrentSection>,
 ) {
     entities::deselect_all(&mut commands, &selected);
 
     commands.trigger(
-        ZoomToFit::new(scene.camera, bounds.0[current.0])
+        ZoomToFit::new(scene_entities.camera, bounds.0[current.0])
             .margin(ZOOM_MARGIN_NAV)
             .duration(Duration::from_millis(ZOOM_DURATION_MS))
             .easing(EaseFunction::CubicOut),
