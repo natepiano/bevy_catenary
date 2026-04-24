@@ -2,10 +2,10 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::CurveKind;
+use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::Obstacle;
 use bevy_catenary::PathStrategy;
 use bevy_catenary::Solver;
-use bevy_catenary::DEFAULT_SLACK;
 use bevy_kana::Position;
 
 use super::super::constants::NODE_Y;

@@ -37,7 +37,7 @@ pub enum Solver {
         /// How to find waypoints around obstacles.
         path_strategy: PathStrategy,
         /// How to generate curves between waypoints.
-        curve_kind:         CurveKind,
+        curve_kind:    CurveKind,
         /// Sample resolution per segment (0 = use solver default).
         resolution:    u32,
     },
