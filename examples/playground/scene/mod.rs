@@ -31,21 +31,21 @@ use super::sections;
 use super::sections::SectionBounds;
 
 #[derive(Resource)]
-pub(crate) struct SceneEntities {
-    pub(crate) camera: Entity,
-    pub(crate) ground: Entity,
+pub(super) struct SceneEntities {
+    pub(super) camera: Entity,
+    pub(super) ground: Entity,
 }
 
 /// Shared cable material handle for all cable meshes.
 #[derive(Resource)]
-pub(crate) struct SharedCableMaterial(pub(crate) Handle<StandardMaterial>);
+pub(super) struct SharedCableMaterial(pub(super) Handle<StandardMaterial>);
 
 /// Marker for cables with a radius multiplier relative to the inspector setting.
 /// The `sync_cable_settings` system applies `radius * multiplier` instead of raw radius.
 #[derive(Component)]
-pub(crate) struct RadiusMultiplier(pub(crate) f32);
+pub(super) struct RadiusMultiplier(pub(super) f32);
 
-pub(crate) fn setup_camera(mut commands: Commands) {
+pub(super) fn setup_camera(mut commands: Commands) {
     let focus = Vec3::new(SECTION_X[0], NODE_Y * 0.5, 0.0);
     let camera = commands
         .spawn(OrbitCam {
@@ -85,7 +85,7 @@ pub(crate) fn setup_camera(mut commands: Commands) {
     });
 }
 
-pub(crate) fn setup_scene(
+pub(super) fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -116,7 +116,7 @@ pub(crate) fn setup_scene(
     ));
 }
 
-pub(crate) fn setup_sections(
+pub(super) fn setup_sections(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,

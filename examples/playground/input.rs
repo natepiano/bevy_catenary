@@ -215,7 +215,7 @@ pub(crate) fn handle_keyboard(
             match &mut cable.solver {
                 Solver::Catenary(catenary)
                 | Solver::Routed {
-                    curve: CurveKind::Catenary(catenary),
+                    curve_kind: CurveKind::Catenary(catenary),
                     ..
                 } => {
                     catenary.slack = (catenary.slack + slack_delta).max(1.0);

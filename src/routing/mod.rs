@@ -5,12 +5,12 @@
 
 mod catenary;
 mod constants;
-mod enums;
 mod geometry;
 mod obstacle;
 mod orthogonal;
 mod pathfinding;
 mod solver;
+mod solver_selection;
 
 pub use catenary::CatenarySolver;
 pub use catenary::evaluate;
@@ -20,9 +20,6 @@ pub use constants::DEFAULT_GRAVITY;
 pub use constants::DEFAULT_RESOLUTION;
 pub use constants::DEFAULT_SLACK;
 pub use constants::MIN_SEGMENT_LENGTH;
-pub use enums::CurveKind;
-pub use enums::PathStrategy;
-pub use enums::Solver;
 pub use geometry::Anchor;
 pub use geometry::CableGeometry;
 pub use geometry::CableSegment;
@@ -37,3 +34,6 @@ pub use solver::LinearSolver;
 pub use solver::PathPlanner;
 pub use solver::RouteSolver;
 pub use solver::Router;
+pub use solver_selection::CurveKind;
+pub use solver_selection::PathStrategy;
+pub use solver_selection::Solver;

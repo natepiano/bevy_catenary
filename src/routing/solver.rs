@@ -76,21 +76,24 @@ impl RouteSolver for LinearSolver {
 
 /// Composes a [`PathPlanner`] and [`CurveSolver`] into a [`RouteSolver`].
 ///
-/// The planner finds waypoints, then the curve solver fills each
+/// The `path_planner` finds waypoints, then the `curve_solver` fills each
 /// waypoint-to-waypoint gap with smooth geometry.
 pub struct Router {
-    planner:    Box<dyn PathPlanner>,
-    curve:      Box<dyn CurveSolver>,
-    resolution: u32,
+    path_planner: Box<dyn PathPlanner>,
+    curve_solver: Box<dyn CurveSolver>,
+    resolution:   u32,
 }
 
 impl Router {
     /// Create a new `Router` composing a planner and curve solver.
-    pub fn new(planner: impl PathPlanner + 'static, curve: impl CurveSolver + 'static) -> Self {
+    pub fn new(
+        path_planner: impl PathPlanner + 'static,
+        curve_solver: impl CurveSolver + 'static,
+    ) -> Self {
         Self {
-            planner:    Box::new(planner),
-            curve:      Box::new(curve),
-            resolution: DEFAULT_RESOLUTION,
+            path_planner: Box::new(path_planner),
+            curve_solver: Box::new(curve_solver),
+            resolution:   DEFAULT_RESOLUTION,
         }
     }
 
@@ -105,12 +108,15 @@ impl Router {
 impl RouteSolver for Router {
     fn solve(&self, request: &RouteRequest) -> CableGeometry {
         let waypoints = self
-            .planner
+            .path_planner
             .plan(request.start, request.end, request.obstacles);
         let resolution = request.effective_resolution(self.resolution);
         let segments: Vec<CableSegment> = waypoints
             .windows(2)
-            .map(|pair| self.curve.solve_segment(pair[0], pair[1], resolution))
+            .map(|pair| {
+                self.curve_solver
+                    .solve_segment(pair[0], pair[1], resolution)
+            })
             .collect();
 
         CableGeometry::from_segments(segments, waypoints)

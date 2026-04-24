@@ -836,7 +836,7 @@ fn obstacle_aabb_bounds_are_correct() {
 
 #[test]
 fn anchor_constructors() {
-    let a = Anchor::new(Vec3::new(1.0, 2.0, 3.0));
+    let a = Anchor::from(Vec3::new(1.0, 2.0, 3.0));
     assert_vec3_approx(a.position, Vec3::new(1.0, 2.0, 3.0), "anchor position");
     assert!(
         a.direction.is_none(),

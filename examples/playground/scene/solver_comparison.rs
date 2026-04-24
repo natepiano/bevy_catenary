@@ -44,9 +44,9 @@ pub(super) fn setup_section_solver_comparison(
         start,
         end,
         Solver::Routed {
-            planner:    PathStrategy::Orthogonal,
-            curve:      CurveKind::Linear,
-            resolution: 0,
+            path_strategy: PathStrategy::Orthogonal,
+            curve_kind:    CurveKind::Linear,
+            resolution:    0,
         },
         vec![],
         cable_mat,

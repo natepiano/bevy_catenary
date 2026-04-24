@@ -16,16 +16,16 @@ pub struct Anchor {
     pub direction: Option<Vec3>,
 }
 
-impl Anchor {
-    /// Create an anchor at a position with no preferred direction.
-    #[must_use]
-    pub fn new(position: impl Into<Vec3>) -> Self {
+impl From<Vec3> for Anchor {
+    fn from(position: Vec3) -> Self {
         Self {
-            position:  position.into(),
+            position,
             direction: None,
         }
     }
+}
 
+impl Anchor {
     /// Create an anchor with a preferred exit direction.
     #[must_use]
     pub fn with_direction(position: impl Into<Vec3>, direction: Vec3) -> Self {

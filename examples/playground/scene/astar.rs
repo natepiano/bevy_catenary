@@ -2,10 +2,10 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::CurveKind;
-use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::Obstacle;
 use bevy_catenary::PathStrategy;
 use bevy_catenary::Solver;
+use bevy_catenary::DEFAULT_SLACK;
 use bevy_kana::Position;
 
 use super::super::constants::NODE_Y;
@@ -37,9 +37,9 @@ pub(super) fn setup_section_astar(
         start,
         end,
         Solver::Routed {
-            planner:    PathStrategy::AStar,
-            curve:      CurveKind::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
-            resolution: 0,
+            path_strategy: PathStrategy::AStar,
+            curve_kind:    CurveKind::Catenary(CatenarySolver::new().with_slack(DEFAULT_SLACK)),
+            resolution:    0,
         },
         vec![obstacle],
         cable_mat,

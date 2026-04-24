@@ -252,7 +252,7 @@ fn apply_solver_detach_response(solver: &mut Solver) {
     match solver {
         Solver::Catenary(catenary_solver)
         | Solver::Routed {
-            curve: CurveKind::Catenary(catenary_solver),
+            curve_kind: CurveKind::Catenary(catenary_solver),
             ..
         } => {
             if let Some(bump) = catenary_solver.detach_slack_bump {

@@ -35,11 +35,11 @@ pub enum Solver {
     /// Path planner + curve solver composition.
     Routed {
         /// How to find waypoints around obstacles.
-        planner:    PathStrategy,
+        path_strategy: PathStrategy,
         /// How to generate curves between waypoints.
-        curve:      CurveKind,
+        curve_kind:         CurveKind,
         /// Sample resolution per segment (0 = use solver default).
-        resolution: u32,
+        resolution:    u32,
     },
 }
 
@@ -71,11 +71,11 @@ impl Solver {
             Self::Catenary(catenary) => catenary.solve(request),
             Self::Linear => LinearSolver.solve(request),
             Self::Routed {
-                planner,
-                curve,
+                path_strategy,
+                curve_kind,
                 resolution,
             } => {
-                let waypoints = planner.plan(request.start, request.end, request.obstacles);
+                let waypoints = path_strategy.plan(request.start, request.end, request.obstacles);
                 let default_res = if *resolution > 0 {
                     *resolution
                 } else {
@@ -85,7 +85,7 @@ impl Solver {
 
                 let segments: Vec<CableSegment> = waypoints
                     .windows(2)
-                    .map(|pair| curve.solve_segment(pair[0], pair[1], resolution))
+                    .map(|pair| curve_kind.solve_segment(pair[0], pair[1], resolution))
                     .collect();
 
                 CableGeometry::from_segments(segments, waypoints)
