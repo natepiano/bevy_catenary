@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 use super::Cable;
 use super::ComputedCableGeometry;
+use super::compute::DirtyCables;
 use crate::mesh::Capping;
 use crate::routing::CurveKind;
 use crate::routing::Solver;
@@ -42,10 +43,10 @@ impl CableEndpoint {
     /// Create a new endpoint with default cap style (`Round`), detach policy (`Remain`),
     /// and alignment (`AsSpawned`).
     #[must_use]
-    pub const fn new(end: CableEnd, offset: Vec3) -> Self {
+    pub fn new(end: CableEnd, offset: impl Into<Vec3>) -> Self {
         Self {
             end,
-            offset,
+            offset: offset.into(),
             cap_style: Capping::Round,
             detach_policy: OnDetach::Remain,
             alignment: EndpointAlignment::AsSpawned,
@@ -213,7 +214,7 @@ pub(super) fn on_endpoint_detached(
     )>,
     mut cables: Query<&mut Cable>,
     mut commands: Commands,
-    mut dirty_cables: ResMut<super::DirtyCables>,
+    mut dirty_cables: ResMut<DirtyCables>,
 ) {
     let endpoint_entity = trigger.event_target();
     let Ok((mut endpoint, child_of, resolved_endpoint_position)) =

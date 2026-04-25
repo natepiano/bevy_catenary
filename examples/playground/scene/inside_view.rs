@@ -8,11 +8,11 @@ use bevy_catenary::FaceSides;
 use bevy_catenary::Solver;
 use bevy_catenary::TubeConfig;
 
-use super::super::constants::INSIDE_VIEW_RADIUS_MULTIPLIER;
-use super::super::constants::NODE_Y;
-use super::super::constants::SECTION_X;
-use super::super::constants::TUBE_RADIUS;
 use super::RadiusMultiplier;
+use crate::constants::INSIDE_VIEW_RADIUS_MULTIPLIER;
+use crate::constants::NODE_Y;
+use crate::constants::SECTION_X;
+use crate::constants::TUBE_RADIUS;
 
 /// Section 7: Inside view — large tube rendered inside-only.
 pub(super) fn setup_section_inside_view(

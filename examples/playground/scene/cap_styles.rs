@@ -9,18 +9,18 @@ use bevy_catenary::FaceSides;
 use bevy_catenary::Solver;
 use bevy_catenary::TubeConfig;
 
-use super::super::animation::TubeLight;
-use super::super::constants::CAP_STYLE_RADIUS_MULTIPLIER;
-use super::super::constants::CAP_STYLE_TUBE_OFFSET;
-use super::super::constants::CAP_STYLE_TUBE_SPACING;
-use super::super::constants::NODE_Y;
-use super::super::constants::POINT_LIGHT_COLOR;
-use super::super::constants::POINT_LIGHT_INTENSITY;
-use super::super::constants::POINT_LIGHT_RANGE;
-use super::super::constants::SECTION_X;
-use super::super::constants::TRANSPARENT_TUBE_COLOR;
-use super::super::constants::TUBE_RADIUS;
 use super::RadiusMultiplier;
+use crate::animation::TubeLight;
+use crate::constants::CAP_STYLE_RADIUS_MULTIPLIER;
+use crate::constants::CAP_STYLE_TUBE_OFFSET;
+use crate::constants::CAP_STYLE_TUBE_SPACING;
+use crate::constants::NODE_Y;
+use crate::constants::POINT_LIGHT_COLOR;
+use crate::constants::POINT_LIGHT_INTENSITY;
+use crate::constants::POINT_LIGHT_RANGE;
+use crate::constants::SECTION_X;
+use crate::constants::TRANSPARENT_TUBE_COLOR;
+use crate::constants::TUBE_RADIUS;
 
 /// Section 1: Three cables with different cap combinations — each end is freely choosable.
 /// Left: Round/Round, Middle: Round/Flat, Right: Round/None.

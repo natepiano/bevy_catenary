@@ -7,15 +7,15 @@ use bevy_catenary::CableMeshConfig;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::Solver;
 
-use super::super::constants::DRAGGABLE_COLOR;
-use super::super::constants::DRAGGABLE_CUBE_SIZE;
-use super::super::constants::NODE_Y;
-use super::super::constants::SECTION_X;
-use super::super::constants::SLACK_NORMAL;
-use super::super::constants::SPAN_HALF_X;
-use super::super::entities::Draggable;
-use super::super::entities::NodeCube;
-use super::super::input;
+use crate::constants::DRAGGABLE_COLOR;
+use crate::constants::DRAGGABLE_CUBE_SIZE;
+use crate::constants::NODE_Y;
+use crate::constants::SECTION_X;
+use crate::constants::SLACK_NORMAL;
+use crate::constants::SPAN_HALF_X;
+use crate::entities::Draggable;
+use crate::entities::NodeCube;
+use crate::input;
 
 /// Section 3: Cables attached to draggable cubes.
 pub(super) fn setup_section_entity_attachment(

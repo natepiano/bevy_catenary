@@ -8,13 +8,13 @@ use bevy_catenary::PathStrategy;
 use bevy_catenary::Solver;
 use bevy_kana::Position;
 
-use super::super::constants::NODE_Y;
-use super::super::constants::OBSTACLE_COLOR;
-use super::super::constants::OBSTACLE_HALF_EXTENTS;
-use super::super::constants::SECTION_X;
-use super::super::constants::SPAN_HALF_X;
-use super::super::entities;
-use super::super::input;
+use crate::constants::NODE_Y;
+use crate::constants::OBSTACLE_COLOR;
+use crate::constants::OBSTACLE_HALF_EXTENTS;
+use crate::constants::SECTION_X;
+use crate::constants::SPAN_HALF_X;
+use crate::entities;
+use crate::input;
 
 /// Section 5: A* pathfinding around an obstacle.
 pub(super) fn setup_section_astar(

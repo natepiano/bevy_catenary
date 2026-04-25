@@ -47,10 +47,10 @@ pub(crate) fn navigate_to_section(
 }
 
 pub(crate) fn update_nav_label(label_query: &mut Query<&mut Text, With<NavLabel>>, section: usize) {
+    let section_number = section + 1;
     for mut text in label_query.iter_mut() {
         **text = format!(
-            "{} / {SECTION_COUNT} - {}",
-            section + 1,
+            "{section_number} / {SECTION_COUNT} - {}",
             SECTION_TITLES[section]
         );
     }

@@ -8,14 +8,14 @@ use bevy_catenary::CatenarySolver;
 use bevy_catenary::DEFAULT_SLACK;
 use bevy_catenary::Solver;
 
-use super::super::constants::DRAGGABLE_COLOR;
-use super::super::constants::HUB_SPHERE_RADIUS;
-use super::super::constants::NODE_Y;
-use super::super::constants::SECTION_X;
-use super::super::entities;
-use super::super::entities::Draggable;
-use super::super::entities::NodeCube;
-use super::super::input;
+use crate::constants::DRAGGABLE_COLOR;
+use crate::constants::HUB_SPHERE_RADIUS;
+use crate::constants::NODE_Y;
+use crate::constants::SECTION_X;
+use crate::entities;
+use crate::entities::Draggable;
+use crate::entities::NodeCube;
+use crate::input;
 
 /// Section 4: Three cables from a central draggable hub.
 pub(super) fn setup_section_shared_hub(

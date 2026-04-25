@@ -4,11 +4,11 @@ use bevy_catenary::CurveKind;
 use bevy_catenary::PathStrategy;
 use bevy_catenary::Solver;
 
-use super::super::constants::NODE_Y;
-use super::super::constants::SECTION_X;
-use super::super::constants::SLACK_NORMAL;
-use super::super::constants::SPAN_HALF_X;
-use super::super::entities;
+use crate::constants::NODE_Y;
+use crate::constants::SECTION_X;
+use crate::constants::SLACK_NORMAL;
+use crate::constants::SPAN_HALF_X;
+use crate::entities;
 
 /// Section 2: Catenary, linear, and orthogonal solvers side by side.
 pub(super) fn setup_section_solver_comparison(

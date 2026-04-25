@@ -2,11 +2,11 @@ use bevy::prelude::*;
 use bevy_catenary::CatenarySolver;
 use bevy_catenary::Solver;
 
-use super::super::constants::NODE_Y;
-use super::super::constants::SECTION_X;
-use super::super::constants::SLACK_NORMAL;
-use super::super::constants::SPAN_HALF_X;
-use super::super::entities;
+use crate::constants::NODE_Y;
+use crate::constants::SECTION_X;
+use crate::constants::SLACK_NORMAL;
+use crate::constants::SPAN_HALF_X;
+use crate::entities;
 
 /// Section 0: Simple catenary cable between two nodes.
 pub(super) fn setup_section_catenary(
