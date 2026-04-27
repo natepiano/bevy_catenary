@@ -23,6 +23,7 @@ use bevy_catenary::evaluate;
 use bevy_catenary::sample_3d;
 use bevy_catenary::solve_parameter;
 use bevy_kana::ToF32;
+use bevy_kana::ToUsize;
 
 const TOLERANCE: f32 = 0.01;
 
@@ -123,7 +124,7 @@ fn sample_3d_returns_correct_number_of_points() {
     let segment = sample_3d(start, end, 1.3, gravity, resolution);
     assert_eq!(
         segment.points.len(),
-        resolution as usize,
+        resolution.to_usize(),
         "should return exactly {resolution} points"
     );
 }
@@ -382,7 +383,7 @@ fn linear_solver_returns_correct_number_of_points() {
     let segment = solver.solve_segment(start, end, resolution);
     assert_eq!(
         segment.points.len(),
-        resolution as usize,
+        resolution.to_usize(),
         "should return exactly {resolution} points"
     );
 }

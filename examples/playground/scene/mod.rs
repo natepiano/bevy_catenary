@@ -9,9 +9,9 @@ mod scaffold;
 mod shared_hub;
 mod solver_comparison;
 
-pub(super) use scaffold::RadiusMultiplier;
-pub(super) use scaffold::SceneEntities;
-pub(super) use scaffold::SharedCableMaterial;
-pub(super) use scaffold::setup_camera;
-pub(super) use scaffold::setup_scene;
-pub(super) use scaffold::setup_sections;
+pub(crate) use scaffold::RadiusMultiplier;
+pub(crate) use scaffold::SceneEntities;
+pub(crate) use scaffold::SharedCableMaterial;
+pub(crate) use scaffold::setup_camera;
+pub(crate) use scaffold::setup_scene;
+pub(crate) use scaffold::setup_sections;

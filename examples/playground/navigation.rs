@@ -31,14 +31,14 @@ pub(crate) struct NavButton(pub(crate) NavDirection);
 pub(crate) fn navigate_to_section(
     commands: &mut Commands,
     section: usize,
-    current: &mut ResMut<CurrentSection>,
+    current_section: &mut ResMut<CurrentSection>,
     scene_entities: &Res<SceneEntities>,
-    bounds: &Res<SectionBounds>,
+    section_bounds: &Res<SectionBounds>,
     label_query: &mut Query<&mut Text, With<NavLabel>>,
 ) {
-    current.0 = section;
+    current_section.0 = section;
     commands.trigger(
-        ZoomToFit::new(scene_entities.camera, bounds.0[section])
+        ZoomToFit::new(scene_entities.camera, section_bounds.0[section])
             .margin(ZOOM_MARGIN_NAV)
             .duration(Duration::from_millis(NAV_DURATION_MS))
             .easing(EaseFunction::CubicInOut),
@@ -59,9 +59,9 @@ pub(crate) fn update_nav_label(label_query: &mut Query<&mut Text, With<NavLabel>
 pub(crate) fn handle_nav_buttons(
     interactions: Query<(&Interaction, &NavButton), Changed<Interaction>>,
     mut commands: Commands,
-    mut current: ResMut<CurrentSection>,
+    mut current_section: ResMut<CurrentSection>,
     scene_entities: Res<SceneEntities>,
-    bounds: Res<SectionBounds>,
+    section_bounds: Res<SectionBounds>,
     mut label_query: Query<&mut Text, With<NavLabel>>,
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
@@ -70,22 +70,22 @@ pub(crate) fn handle_nav_buttons(
     for (interaction, nav) in &interactions {
         if *interaction == Interaction::Pressed {
             match nav.0 {
-                NavDirection::Left if current.0 > 0 => {
-                    new_section = Some(current.0 - 1);
+                NavDirection::Left if current_section.0 > 0 => {
+                    new_section = Some(current_section.0 - 1);
                 },
-                NavDirection::Right if current.0 < SECTION_COUNT - 1 => {
-                    new_section = Some(current.0 + 1);
+                NavDirection::Right if current_section.0 < SECTION_COUNT - 1 => {
+                    new_section = Some(current_section.0 + 1);
                 },
                 _ => {},
             }
         }
     }
 
-    if keyboard.just_pressed(KeyCode::ArrowLeft) && current.0 > 0 {
-        new_section = Some(current.0 - 1);
+    if keyboard.just_pressed(KeyCode::ArrowLeft) && current_section.0 > 0 {
+        new_section = Some(current_section.0 - 1);
     }
-    if keyboard.just_pressed(KeyCode::ArrowRight) && current.0 < SECTION_COUNT - 1 {
-        new_section = Some(current.0 + 1);
+    if keyboard.just_pressed(KeyCode::ArrowRight) && current_section.0 < SECTION_COUNT - 1 {
+        new_section = Some(current_section.0 + 1);
     }
 
     let number_keys = [
@@ -109,9 +109,9 @@ pub(crate) fn handle_nav_buttons(
         navigate_to_section(
             &mut commands,
             section,
-            &mut current,
+            &mut current_section,
             &scene_entities,
-            &bounds,
+            &section_bounds,
             &mut label_query,
         );
     }

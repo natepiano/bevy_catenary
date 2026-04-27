@@ -45,11 +45,11 @@ pub(crate) fn spawn_section_bounds(
 }
 
 pub(crate) fn update_section_info_visibility(
-    current: Res<CurrentSection>,
+    current_section: Res<CurrentSection>,
     mut infos: Query<(&SectionInfo, &mut Visibility)>,
 ) {
     for (info, mut vis) in &mut infos {
-        *vis = if info.0 == current.0 {
+        *vis = if info.0 == current_section.0 {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -59,7 +59,7 @@ pub(crate) fn update_section_info_visibility(
 
 pub(crate) fn update_current_section_from_camera(
     cameras: Query<&OrbitCam>,
-    mut current: ResMut<CurrentSection>,
+    mut current_section: ResMut<CurrentSection>,
     mut label_query: Query<&mut Text, With<NavLabel>>,
 ) {
     let Ok(cam) = cameras.single() else {
@@ -77,8 +77,8 @@ pub(crate) fn update_current_section_from_camera(
         })
         .map_or(0, |(i, _)| i);
 
-    if nearest != current.0 {
-        current.0 = nearest;
+    if nearest != current_section.0 {
+        current_section.0 = nearest;
         navigation::update_nav_label(&mut label_query, nearest);
     }
 }

@@ -269,13 +269,13 @@ pub(crate) fn on_ground_clicked(
     mut commands: Commands,
     selected: Query<Entity, With<Selected>>,
     scene_entities: Res<SceneEntities>,
-    bounds: Res<SectionBounds>,
-    current: Res<CurrentSection>,
+    section_bounds: Res<SectionBounds>,
+    current_section: Res<CurrentSection>,
 ) {
     entities::deselect_all(&mut commands, &selected);
 
     commands.trigger(
-        ZoomToFit::new(scene_entities.camera, bounds.0[current.0])
+        ZoomToFit::new(scene_entities.camera, section_bounds.0[current_section.0])
             .margin(ZOOM_MARGIN_NAV)
             .duration(Duration::from_millis(ZOOM_DURATION_MS))
             .easing(EaseFunction::CubicOut),

@@ -11,7 +11,7 @@ use crate::routing::CableGeometry;
 use crate::routing::MIN_SEGMENT_LENGTH;
 use crate::routing::RouteRequest;
 
-/// `SystemSet` for cross-plugin ordering. `GizmosPlugin`'s render systems run
+/// `SystemSet` for cross-plugin ordering. `GizmosPlugin` render systems run
 /// `.after(CableSystems::Compute)` to observe freshly-computed geometry in the
 /// same frame.
 #[derive(SystemSet, Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -44,7 +44,7 @@ impl Plugin for ComputePlugin {
     }
 }
 
-/// Computed cable geometry, populated by the cable recompute queue.
+/// `ComputedCableGeometry`, populated by the cable recompute queue.
 ///
 /// Rendering systems read from this component.
 #[derive(Component, Clone, Default)]

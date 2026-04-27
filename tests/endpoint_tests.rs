@@ -1,11 +1,10 @@
 #![allow(
     clippy::unwrap_used,
-    clippy::expect_used,
     reason = "tests should panic on unexpected values"
 )]
 //! Integration tests for entity-based cable endpoints.
 //!
-//! Uses `MinimalPlugins` for headless testing — no window, no renderer.
+//! Uses `MinimalPlugins` for headless testing: no window, no renderer.
 
 use bevy::app::App;
 use bevy::math::Vec3;
