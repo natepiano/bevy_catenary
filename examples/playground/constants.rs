@@ -42,18 +42,6 @@ pub(crate) const SECTION_SPACING: f32 = 16.0;
 pub(crate) const SLACK_ADJUSTMENT_STEP: f32 = 0.01;
 pub(crate) const SPAN_HALF_X: f32 = 3.0;
 
-pub(crate) const SECTION_X: [f32; SECTION_COUNT] = [
-    -4.0 * SECTION_SPACING,
-    -3.0 * SECTION_SPACING,
-    -2.0 * SECTION_SPACING,
-    -SECTION_SPACING,
-    0.0 * SECTION_SPACING,
-    1.0 * SECTION_SPACING,
-    2.0 * SECTION_SPACING,
-    3.0 * SECTION_SPACING,
-    4.0 * SECTION_SPACING,
-];
-
 pub(crate) const SECTION_TITLES: [&str; SECTION_COUNT] = [
     "Simple Catenary",
     "Cap Styles",
@@ -64,6 +52,18 @@ pub(crate) const SECTION_TITLES: [&str; SECTION_COUNT] = [
     "Detach Policy",
     "Inside View",
     "Connector Model",
+];
+
+pub(crate) const SECTION_X: [f32; SECTION_COUNT] = [
+    -4.0 * SECTION_SPACING,
+    -3.0 * SECTION_SPACING,
+    -2.0 * SECTION_SPACING,
+    -SECTION_SPACING,
+    0.0 * SECTION_SPACING,
+    1.0 * SECTION_SPACING,
+    2.0 * SECTION_SPACING,
+    3.0 * SECTION_SPACING,
+    4.0 * SECTION_SPACING,
 ];
 
 // Light
