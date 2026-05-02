@@ -71,12 +71,12 @@ impl From<&ButtonInput<KeyCode>> for SlackAdjustment {
 
 fn cursor_ray_y_plane(
     camera: &Camera,
-    cam_tf: &GlobalTransform,
+    camera_transform: &GlobalTransform,
     window: &Window,
     y_height: f32,
 ) -> Option<Vec3> {
     let cursor = window.cursor_position()?;
-    let ray = camera.viewport_to_world(cam_tf, cursor).ok()?;
+    let ray = camera.viewport_to_world(camera_transform, cursor).ok()?;
     let denom = ray.direction.y;
     if denom.abs() < RAY_EPSILON {
         return None;
@@ -108,13 +108,14 @@ pub(crate) fn handle_drag(
         return;
     }
 
-    let Ok((camera, cam_tf)) = cameras.single() else {
+    let Ok((camera, camera_transform)) = cameras.single() else {
         return;
     };
     let Ok(window) = windows.single() else {
         return;
     };
-    let Some(hit) = cursor_ray_y_plane(camera, cam_tf, window, drag_state.y_height) else {
+    let Some(hit) = cursor_ray_y_plane(camera, camera_transform, window, drag_state.y_height)
+    else {
         return;
     };
 
@@ -142,13 +143,13 @@ pub(crate) fn on_drag_start(
     drag_state.y_height = tf.translation.y;
     drag_state.grab_offset = Vec2::ZERO;
 
-    let Ok((camera, cam_tf)) = cameras.single() else {
+    let Ok((camera, camera_transform)) = cameras.single() else {
         return;
     };
     let Ok(window) = windows.single() else {
         return;
     };
-    let Some(hit) = cursor_ray_y_plane(camera, cam_tf, window, tf.translation.y) else {
+    let Some(hit) = cursor_ray_y_plane(camera, camera_transform, window, tf.translation.y) else {
         return;
     };
     drag_state.grab_offset = Vec2::new(tf.translation.x - hit.x, tf.translation.z - hit.z);

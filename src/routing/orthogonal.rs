@@ -124,10 +124,10 @@ impl OrthogonalPlanner {
 
         // Route below obstacles: go down, across X, across Z, up
         let below = start.y.min(end.y) - offset;
-        let p1 = Vec3::new(start.x, below, start.z);
-        let p2 = Vec3::new(end.x, below, start.z);
-        let p3 = Vec3::new(end.x, below, end.z);
-        vec![start, p1, p2, p3, end]
+        let below_start = Vec3::new(start.x, below, start.z);
+        let below_corner = Vec3::new(end.x, below, start.z);
+        let below_end = Vec3::new(end.x, below, end.z);
+        vec![start, below_start, below_corner, below_end, end]
     }
 }
 

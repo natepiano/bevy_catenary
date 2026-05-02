@@ -11,8 +11,8 @@ use crate::routing::CableGeometry;
 fn resolve_elbow_arms(
     config: &CableMeshConfig,
     elbow_idx: usize,
-    p0: Vec3,
-    p3: Vec3,
+    fillet_start: Vec3,
+    fillet_end: Vec3,
     max_arm: f32,
 ) -> (f32, f32) {
     config
@@ -22,10 +22,16 @@ fn resolve_elbow_arms(
         .and_then(|overrides| overrides.get(elbow_idx))
         .map_or_else(
             || {
-                let arm = (p0.distance(p3) / 3.0 * config.elbow.arm_multiplier).min(max_arm);
+                let arm = (fillet_start.distance(fillet_end) / 3.0 * config.elbow.arm_multiplier)
+                    .min(max_arm);
                 (arm, arm)
             },
-            |&(a1, a2)| (a1.clamp(0.0, max_arm), a2.clamp(0.0, max_arm)),
+            |&(first_arm_length, second_arm_length)| {
+                (
+                    first_arm_length.clamp(0.0, max_arm),
+                    second_arm_length.clamp(0.0, max_arm),
+                )
+            },
         )
 }
 
@@ -33,23 +39,23 @@ fn resolve_elbow_arms(
 #[derive(Clone, Debug)]
 pub struct ElbowMetadata {
     /// Fillet start point (on incoming straight section).
-    pub p0:           Vec3,
-    /// First control point (along incoming direction from `p0`).
-    pub p1:           Vec3,
-    /// Second control point (along outgoing direction toward `p3`).
-    pub p2:           Vec3,
+    pub fillet_start:         Vec3,
+    /// First control point (along incoming direction from `fillet_start`).
+    pub first_control_point:  Vec3,
+    /// Second control point (along outgoing direction toward `fillet_end`).
+    pub second_control_point: Vec3,
     /// Fillet end point (on outgoing straight section).
-    pub p3:           Vec3,
+    pub fillet_end:           Vec3,
     /// Incoming segment direction at the elbow.
-    pub dir_in:       Vec3,
+    pub dir_in:               Vec3,
     /// Outgoing segment direction at the elbow.
-    pub dir_out:      Vec3,
-    /// Arm length for P1.
-    pub control1_arm: f32,
-    /// Arm length for P2.
-    pub control2_arm: f32,
+    pub dir_out:              Vec3,
+    /// Arm length for `first_control_point`.
+    pub control1_arm:         f32,
+    /// Arm length for `second_control_point`.
+    pub control2_arm:         f32,
     /// Fillet reach distance.
-    pub fillet_reach: f32,
+    pub fillet_reach:         f32,
 }
 
 /// Pre-computed elbow detection parameters extracted from `CableMeshConfig`.
@@ -92,18 +98,19 @@ fn compute_elbow_at_corner(
     let half_theta = theta * 0.5;
     let fillet_reach = params.bend_radius * half_theta.tan();
 
-    let p0 = corner - dir_in * fillet_reach;
-    let p3 = corner + dir_out * fillet_reach;
+    let fillet_start = corner - dir_in * fillet_reach;
+    let fillet_end = corner + dir_out * fillet_reach;
     let max_arm = fillet_reach * MAX_ARM_RATIO;
-    let (control1_arm, control2_arm) = resolve_elbow_arms(config, elbow_idx, p0, p3, max_arm);
-    let p1 = p0 + dir_in * control1_arm;
-    let p2 = p3 - dir_out * control2_arm;
+    let (control1_arm, control2_arm) =
+        resolve_elbow_arms(config, elbow_idx, fillet_start, fillet_end, max_arm);
+    let first_control_point = fillet_start + dir_in * control1_arm;
+    let second_control_point = fillet_end - dir_out * control2_arm;
 
     Some(ElbowMetadata {
-        p0,
-        p1,
-        p2,
-        p3,
+        fillet_start,
+        first_control_point,
+        second_control_point,
+        fillet_end,
         dir_in,
         dir_out,
         control1_arm,
@@ -156,7 +163,7 @@ pub(super) fn insert_knee_rings(
 
         while output_points.len() > 1 {
             let last = output_points[output_points.len() - 1];
-            if (last - metadata.p0).dot(dir_in) > 0.0 {
+            if (last - metadata.fillet_start).dot(dir_in) > 0.0 {
                 output_points.pop();
                 output_arc_lengths.pop();
             } else {
@@ -167,8 +174,8 @@ pub(super) fn insert_knee_rings(
         let base_arc = output_arc_lengths.last().copied().unwrap_or(0.0);
         let distance_to_fillet_start = output_points
             .last()
-            .map_or(0.0, |last| last.distance(metadata.p0));
-        output_points.push(metadata.p0);
+            .map_or(0.0, |last| last.distance(metadata.fillet_start));
+        output_points.push(metadata.fillet_start);
         output_arc_lengths.push(base_arc + distance_to_fillet_start);
 
         let theta = metadata
@@ -182,20 +189,24 @@ pub(super) fn insert_knee_rings(
             .to_u32();
 
         let fillet_base_arc = output_arc_lengths[output_arc_lengths.len() - 1];
-        let q1 = 0.125 * (metadata.p0 + 3.0 * metadata.p1 + 3.0 * metadata.p2 + metadata.p3)
-            - 0.0625 * (3.0 * metadata.p0 + metadata.p3);
+        let q1 = 0.125
+            * (metadata.fillet_start
+                + 3.0 * metadata.first_control_point
+                + 3.0 * metadata.second_control_point
+                + metadata.fillet_end)
+            - 0.0625 * (3.0 * metadata.fillet_start + metadata.fillet_end);
         let fillet_length = metadata
-            .p0
+            .fillet_start
             .distance(q1)
-            .mul_add(2.0, q1.distance(metadata.p3) * 2.0);
+            .mul_add(2.0, q1.distance(metadata.fillet_end) * 2.0);
 
         for k in 1..=num_rings {
             let t = k.to_f32() / num_rings.to_f32();
             let one_minus_t = 1.0 - t;
-            let position = one_minus_t * one_minus_t * one_minus_t * metadata.p0
-                + 3.0 * one_minus_t * one_minus_t * t * metadata.p1
-                + 3.0 * one_minus_t * t * t * metadata.p2
-                + t * t * t * metadata.p3;
+            let position = one_minus_t * one_minus_t * one_minus_t * metadata.fillet_start
+                + 3.0 * one_minus_t * one_minus_t * t * metadata.first_control_point
+                + 3.0 * one_minus_t * t * t * metadata.second_control_point
+                + t * t * t * metadata.fillet_end;
 
             output_points.push(position);
             output_arc_lengths.push(fillet_base_arc + t * fillet_length);
@@ -203,7 +214,7 @@ pub(super) fn insert_knee_rings(
 
         i += 1;
         while i < point_count {
-            if (points[i] - metadata.p3).dot(dir_out) < 0.0 {
+            if (points[i] - metadata.fillet_end).dot(dir_out) < 0.0 {
                 i += 1;
             } else {
                 break;
