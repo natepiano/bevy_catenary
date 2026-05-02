@@ -119,8 +119,11 @@ impl AStarPlanner {
     }
 
     /// Check if a world-space point is inside any obstacle (with margin).
-    fn is_blocked(&self, pos: Vec3, obstacles: &[Obstacle]) -> bool {
-        obstacle::is_point_in_any_obstacle(pos, obstacles, self.margin)
+    fn is_blocked(&self, pos: Vec3, obstacles: &[Obstacle]) -> obstacle::Blockage {
+        match obstacle::is_point_in_any_obstacle(pos, obstacles, self.margin) {
+            obstacle::PointContainment::Inside => obstacle::Blockage::Blocked,
+            obstacle::PointContainment::Outside => obstacle::Blockage::Clear,
+        }
     }
 
     /// 26-connected neighbors (all adjacent cells including diagonals).
@@ -187,8 +190,9 @@ impl AStarPlanner {
             for neighbor in Self::neighbors(current) {
                 let neighbor_world = neighbor.to_world(origin, self.grid_size);
 
-                if self.is_blocked(neighbor_world, obstacles) {
-                    continue;
+                match self.is_blocked(neighbor_world, obstacles) {
+                    obstacle::Blockage::Blocked => continue,
+                    obstacle::Blockage::Clear => {},
                 }
 
                 let move_cost = Self::heuristic(current, neighbor) * self.grid_size;
@@ -220,8 +224,9 @@ impl PathPlanner for AStarPlanner {
             return vec![start, end];
         }
 
-        if !self.is_direct_path_blocked(start, end, obstacles) {
-            return vec![start, end];
+        match self.is_direct_path_blocked(start, end, obstacles) {
+            obstacle::Blockage::Clear => return vec![start, end],
+            obstacle::Blockage::Blocked => {},
         }
 
         let origin = start;
@@ -255,7 +260,12 @@ impl PathPlanner for AStarPlanner {
 
 impl AStarPlanner {
     /// Check if any obstacle intersects the direct line from start to end.
-    fn is_direct_path_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
+    fn is_direct_path_blocked(
+        &self,
+        start: Vec3,
+        end: Vec3,
+        obstacles: &[Obstacle],
+    ) -> obstacle::Blockage {
         obstacle::is_segment_blocked(
             start,
             end,

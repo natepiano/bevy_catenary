@@ -64,7 +64,12 @@ impl OrthogonalPlanner {
     }
 
     /// Check if an axis-aligned segment between two points is blocked.
-    fn is_segment_blocked(&self, start: Vec3, end: Vec3, obstacles: &[Obstacle]) -> bool {
+    fn is_segment_blocked(
+        &self,
+        start: Vec3,
+        end: Vec3,
+        obstacles: &[Obstacle],
+    ) -> obstacle::Blockage {
         obstacle::is_segment_blocked(
             start,
             end,
@@ -147,8 +152,13 @@ impl PathPlanner for OrthogonalPlanner {
 
         for order in orders {
             let path = Self::axis_path(start, end, order);
-            if obstacles.is_empty() || !self.is_path_blocked(&path, obstacles) {
+            if obstacles.is_empty() {
                 return path;
+            }
+
+            match self.is_path_blocked(&path, obstacles) {
+                obstacle::Blockage::Clear => return path,
+                obstacle::Blockage::Blocked => {},
             }
         }
 
@@ -159,9 +169,14 @@ impl PathPlanner for OrthogonalPlanner {
 
 impl OrthogonalPlanner {
     /// Check if any segment of a multi-waypoint path is blocked.
-    fn is_path_blocked(&self, waypoints: &[Vec3], obstacles: &[Obstacle]) -> bool {
-        waypoints
-            .windows(2)
-            .any(|pair| self.is_segment_blocked(pair[0], pair[1], obstacles))
+    fn is_path_blocked(&self, waypoints: &[Vec3], obstacles: &[Obstacle]) -> obstacle::Blockage {
+        for pair in waypoints.windows(2) {
+            match self.is_segment_blocked(pair[0], pair[1], obstacles) {
+                obstacle::Blockage::Blocked => return obstacle::Blockage::Blocked,
+                obstacle::Blockage::Clear => {},
+            }
+        }
+
+        obstacle::Blockage::Clear
     }
 }

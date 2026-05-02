@@ -5,6 +5,18 @@ use bevy::math::Vec3;
 use bevy::reflect::Reflect;
 use bevy_kana::ToF32;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PointContainment {
+    Outside,
+    Inside,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum Blockage {
+    Clear,
+    Blocked,
+}
+
 /// An axis-aligned bounding box with a world transform, used as a routing obstacle.
 #[derive(Clone, Copy, Debug, Reflect)]
 pub struct Obstacle {
@@ -45,28 +57,51 @@ impl Obstacle {
     #[must_use]
     pub fn aabb_max(&self) -> Vec3 { self.position + self.half_extents }
 
-    /// Check if a point is inside this obstacle's `AABB`, expanded by `margin`.
-    #[must_use]
-    pub fn contains_point(&self, pos: impl Into<Vec3>, margin: f32) -> bool {
-        let pos: Vec3 = pos.into();
+    fn point_containment(&self, pos: Vec3, margin: f32) -> PointContainment {
         let min = self.aabb_min() - Vec3::splat(margin);
         let max = self.aabb_max() + Vec3::splat(margin);
-        pos.x >= min.x
+        if pos.x >= min.x
             && pos.x <= max.x
             && pos.y >= min.y
             && pos.y <= max.y
             && pos.z >= min.z
             && pos.z <= max.z
+        {
+            PointContainment::Inside
+        } else {
+            PointContainment::Outside
+        }
+    }
+
+    /// Check if a point is inside this obstacle's `AABB`, expanded by `margin`.
+    #[must_use]
+    pub fn contains_point(&self, pos: impl Into<Vec3>, margin: f32) -> bool {
+        matches!(
+            self.point_containment(pos.into(), margin),
+            PointContainment::Inside
+        )
     }
 }
 
-/// Check if a point is inside any obstacle's `AABB`, expanded by `margin`.
+/// Check whether a point falls inside any obstacle's `AABB`, expanded by `margin`.
 #[must_use]
-pub(super) fn is_point_in_any_obstacle(pos: Vec3, obstacles: &[Obstacle], margin: f32) -> bool {
-    obstacles.iter().any(|obs| obs.contains_point(pos, margin))
+pub(super) fn is_point_in_any_obstacle(
+    pos: Vec3,
+    obstacles: &[Obstacle],
+    margin: f32,
+) -> PointContainment {
+    for obstacle in obstacles {
+        match obstacle.point_containment(pos, margin) {
+            PointContainment::Inside => return PointContainment::Inside,
+            PointContainment::Outside => {},
+        }
+    }
+
+    PointContainment::Outside
 }
 
-/// Check if any obstacle intersects a line segment by sampling `steps` evenly-spaced points.
+/// Check whether any obstacle intersects a line segment by sampling `steps`
+/// evenly-spaced points.
 #[must_use]
 pub(super) fn is_segment_blocked(
     start: Vec3,
@@ -74,10 +109,15 @@ pub(super) fn is_segment_blocked(
     obstacles: &[Obstacle],
     margin: f32,
     steps: u32,
-) -> bool {
-    (0..=steps).any(|i| {
+) -> Blockage {
+    for i in 0..=steps {
         let t = i.to_f32() / steps.to_f32();
         let point = start.lerp(end, t);
-        is_point_in_any_obstacle(point, obstacles, margin)
-    })
+        match is_point_in_any_obstacle(point, obstacles, margin) {
+            PointContainment::Inside => return Blockage::Blocked,
+            PointContainment::Outside => {},
+        }
+    }
+
+    Blockage::Clear
 }

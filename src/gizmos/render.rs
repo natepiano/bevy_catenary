@@ -1,59 +1,19 @@
-//! Debug gizmo rendering for cables — cable polylines, tangent vectors, waypoint dots.
-
 use bevy::prelude::*;
 
-use crate::cable::CableSystems;
+use super::constants::CABLE_GIZMO_COLOR;
+use super::constants::SEGMENT_BOUNDARY_COLOR;
+use super::constants::SEGMENT_BOUNDARY_DOT_SIZE;
+use super::constants::TANGENT_GIZMO_COLOR;
+use super::constants::TANGENT_SAMPLING_INTERVAL;
+use super::constants::TANGENT_VECTOR_SCALE;
+use super::constants::WAYPOINT_DOT_COLOR;
+use super::constants::WAYPOINT_DOT_SIZE;
+use super::debug::CableGizmoGroup;
+use super::debug::DebugGizmos;
 use crate::cable::ComputedCableGeometry;
 
-// Cable polyline
-const CABLE_GIZMO_COLOR: Color = Color::srgb(1.0, 0.6, 0.0);
-
-// Segment boundaries
-const SEGMENT_BOUNDARY_COLOR: Color = Color::srgb(1.0, 0.0, 0.0);
-const SEGMENT_BOUNDARY_DOT_SIZE: f32 = 0.03;
-
-// Tangent vectors
-const TANGENT_GIZMO_COLOR: Color = Color::srgb(1.0, 1.0, 0.0);
-const TANGENT_SAMPLING_INTERVAL: usize = 4;
-const TANGENT_VECTOR_SCALE: f32 = 0.1;
-
-// Waypoints
-const WAYPOINT_DOT_COLOR: Color = Color::srgb(0.0, 1.0, 0.0);
-const WAYPOINT_DOT_SIZE: f32 = 0.05;
-
-/// Gizmo group for cable debug wireframes.
-///
-/// Enable or disable via Bevy's `GizmoConfigStore`.
-#[derive(Default, Reflect, GizmoConfigGroup)]
-pub struct CableGizmoGroup;
-
-/// Resource that toggles detailed debug visualization.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Resource)]
-pub enum DebugGizmos {
-    /// Debug gizmos are rendered.
-    Enabled,
-    /// Debug gizmos are hidden.
-    #[default]
-    Disabled,
-}
-
-pub(crate) struct GizmosPlugin;
-
-impl Plugin for GizmosPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<DebugGizmos>()
-            .init_gizmo_group::<CableGizmoGroup>()
-            .add_systems(
-                Update,
-                (render_cable_gizmos, render_debug_gizmos)
-                    .chain()
-                    .after(CableSystems::Compute),
-            );
-    }
-}
-
 /// Renders cable geometry as gizmo lines (only when debug is enabled).
-fn render_cable_gizmos(
+pub(super) fn render_cable_gizmos(
     cables: Query<&ComputedCableGeometry>,
     mut gizmos: Gizmos<CableGizmoGroup>,
     debug_enabled: Res<DebugGizmos>,
@@ -83,7 +43,7 @@ fn render_cable_gizmos(
 }
 
 /// Renders detailed debug info: tangent vectors and segment boundaries.
-fn render_debug_gizmos(
+pub(super) fn render_debug_gizmos(
     cables: Query<&ComputedCableGeometry>,
     mut gizmos: Gizmos<CableGizmoGroup>,
     debug_enabled: Res<DebugGizmos>,
