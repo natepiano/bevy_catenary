@@ -3,6 +3,7 @@
 //! detachment.
 
 mod compute;
+mod constants;
 mod endpoint;
 
 use bevy::prelude::*;

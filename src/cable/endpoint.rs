@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use super::Cable;
 use super::ComputedCableGeometry;
 use super::compute::DirtyCables;
+use super::constants::ALIGNMENT_FEEDBACK_GUARD;
 use crate::mesh::Capping;
 use crate::routing::CurveKind;
 use crate::routing::Solver;
@@ -194,7 +195,7 @@ pub(super) fn on_endpoint_alignment_update(
         // rotation that redirties `GlobalTransform`, forming an infinite cycle of
         // geometry → alignment → geometry.
         let delta = transform.rotation.dot(new_rotation).abs();
-        if delta < 0.9999 {
+        if delta < ALIGNMENT_FEEDBACK_GUARD {
             transform.rotation = new_rotation;
         }
     }

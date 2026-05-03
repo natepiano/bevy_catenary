@@ -3,7 +3,9 @@ use bevy_kana::ToF32;
 use bevy_kana::ToU32;
 
 use super::config::CableMeshConfig;
+use super::constants::DEFAULT_ELBOW_ARM_FRACTION;
 use super::constants::MAX_ARM_RATIO;
+use super::constants::MIN_ELBOW_RINGS;
 use super::path;
 use crate::routing::CableGeometry;
 
@@ -22,7 +24,9 @@ fn resolve_elbow_arms(
         .and_then(|overrides| overrides.get(elbow_idx))
         .map_or_else(
             || {
-                let arm = (fillet_start.distance(fillet_end) / 3.0 * config.elbow.arm_multiplier)
+                let arm = (fillet_start.distance(fillet_end)
+                    * DEFAULT_ELBOW_ARM_FRACTION
+                    * config.elbow.arm_multiplier)
                     .min(max_arm);
                 (arm, arm)
             },
@@ -185,7 +189,7 @@ pub(super) fn insert_knee_rings(
             .acos();
         let num_rings = ((theta / std::f32::consts::FRAC_PI_2) * rings_per_right_angle.to_f32())
             .ceil()
-            .max(3.0)
+            .max(MIN_ELBOW_RINGS)
             .to_u32();
 
         let fillet_base_arc = output_arc_lengths[output_arc_lengths.len() - 1];

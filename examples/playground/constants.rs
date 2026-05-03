@@ -39,9 +39,6 @@ pub(crate) const NODE_Y: f32 = 2.0;
 pub(crate) const RAY_EPSILON: f32 = 1e-6;
 pub(crate) const SECTION_COUNT: usize = 9;
 pub(crate) const SECTION_SPACING: f32 = 16.0;
-pub(crate) const SLACK_ADJUSTMENT_STEP: f32 = 0.01;
-pub(crate) const SPAN_HALF_X: f32 = 3.0;
-
 pub(crate) const SECTION_TITLES: [&str; SECTION_COUNT] = [
     "Simple Catenary",
     "Cap Styles",
@@ -53,7 +50,6 @@ pub(crate) const SECTION_TITLES: [&str; SECTION_COUNT] = [
     "Inside View",
     "Connector Model",
 ];
-
 pub(crate) const SECTION_X: [f32; SECTION_COUNT] = [
     -4.0 * SECTION_SPACING,
     -3.0 * SECTION_SPACING,
@@ -65,6 +61,8 @@ pub(crate) const SECTION_X: [f32; SECTION_COUNT] = [
     3.0 * SECTION_SPACING,
     4.0 * SECTION_SPACING,
 ];
+pub(crate) const SLACK_ADJUSTMENT_STEP: f32 = 0.01;
+pub(crate) const SPAN_HALF_X: f32 = 3.0;
 
 // Light
 pub(crate) const DIRECTIONAL_LIGHT_ILLUMINANCE: f32 = 3000.0;
